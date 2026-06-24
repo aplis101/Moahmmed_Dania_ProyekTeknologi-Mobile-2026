@@ -1,0 +1,24 @@
+# ملف .gitignore لمشروع SisaPintar
+
+# Flutter build artifacts
+sisa_pintar_flutter/.dart_tool/
+sisa_pintar_flutter/build/
+sisa_pintar_flutter/.flutter-plugins
+sisa_pintar_flutter/.flutter-plugins-dependencies
+sisa_pintar_flutter/pubspec.lock
+
+# Ignore everything else at the root
+/web_prototype/
+/Diagram_User_Flow/
+/Minggu_08_Panduan/
+/Minggu_09_Panduan/
+/Minggu_10_Panduan/
+/Dokumentasi_dan_Rencana_Pengembangan_SisaPintar.docx
+/Matriks_Pemenuhan_Tugas.md
+/Modul_Proyek_Teknologi_Mobile_SDGs.pdf
+/Konten_Poster_SisaPintar.md
+
+# Common ignores
+*.log
+.DS_Store
+Thumbs.db
