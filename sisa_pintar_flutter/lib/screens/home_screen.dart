@@ -8,11 +8,11 @@ class HomeScreen extends StatelessWidget {
   final Function(int) onNavigateToTab;
 
   const HomeScreen({
-    Key? key,
+    super.key,
     required this.onToggleDarkMode,
     required this.isDarkMode,
     required this.onNavigateToTab,
-  }) : super(key: key);
+  });
 
   @override
   Widget build(BuildContext context) {

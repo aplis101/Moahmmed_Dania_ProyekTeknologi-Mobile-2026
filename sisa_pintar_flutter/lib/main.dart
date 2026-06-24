@@ -36,7 +36,7 @@ class AppThemeProvider extends ChangeNotifier {
 }
 
 class SisaPintarApp extends StatelessWidget {
-  const SisaPintarApp({Key? key}) : super(key: key);
+  const SisaPintarApp({super.key});
 
   @override
   Widget build(BuildContext context) {
@@ -88,7 +88,7 @@ class SisaPintarApp extends StatelessWidget {
 }
 
 class MainNavigationShell extends StatefulWidget {
-  const MainNavigationShell({Key? key}) : super(key: key);
+  const MainNavigationShell({super.key});
 
   @override
   State<MainNavigationShell> createState() => _MainNavigationShellState();

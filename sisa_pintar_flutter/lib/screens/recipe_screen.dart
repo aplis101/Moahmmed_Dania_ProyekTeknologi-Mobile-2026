@@ -9,10 +9,10 @@ class RecipeScreen extends StatefulWidget {
   final bool isDarkMode;
 
   const RecipeScreen({
-    Key? key,
+    super.key,
     required this.onToggleDarkMode,
     required this.isDarkMode,
-  }) : super(key: key);
+  });
 
   @override
   State<RecipeScreen> createState() => _RecipeScreenState();

@@ -9,10 +9,10 @@ class DashboardScreen extends StatefulWidget {
   final bool isDarkMode;
 
   const DashboardScreen({
-    Key? key,
+    super.key,
     required this.onToggleDarkMode,
     required this.isDarkMode,
-  }) : super(key: key);
+  });
 
   @override
   State<DashboardScreen> createState() => _DashboardScreenState();
