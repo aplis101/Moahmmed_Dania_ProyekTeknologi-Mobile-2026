@@ -2,7 +2,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:lucide_icons/lucide_icons.dart';
 import 'package:provider/provider.dart';
+import 'package:timezone/data/latest.dart' as tz;
+import 'package:timezone/timezone.dart' as tz;
 import 'database/hive_db_helper.dart';
+import 'services/notification_service.dart';
 import 'screens/home_screen.dart';
 import 'screens/expiry_tracker_screen.dart';
 import 'screens/recipe_screen.dart';
@@ -13,6 +16,13 @@ void main() async {
 
   // Load environment variables from .env file
   await dotenv.load(fileName: '.env');
+
+  // Initialize timezone - MUST be done before using tz.local
+  tz.initializeTimeZones();
+  tz.setLocalLocation(tz.getLocation('Asia/Jakarta'));
+
+  // Initialize Notification Service
+  await NotificationService().initialize();
 
   // Initialize Hive storage
   await HiveDbHelper.init();

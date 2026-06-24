@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
-import 'package:timezone/data/latest.dart' as tz;
 import 'package:timezone/timezone.dart' as tz;
 
 /// خدمة الإشعارات المحلية - تُذكّر المستخدم قبل انتهاء صلاحية المواد الغذائية
@@ -14,8 +13,7 @@ class NotificationService {
 
   /// تهيئة خدمة الإشعارات عند بدء التطبيق
   Future<void> initialize() async {
-    tz.initializeTimeZones();
-
+    // Note: tz.initializeTimeZones() is called in main() before this
     const androidSettings =
         AndroidInitializationSettings('@mipmap/ic_launcher');
     const iosSettings = DarwinInitializationSettings(

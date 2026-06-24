@@ -102,7 +102,7 @@ class _ExpiryTrackerScreenState extends State<ExpiryTrackerScreen> {
     }
   }
 
-  /// Hapus bahan dari Hive
+  /// حذف بند من Hive
   Future<void> _deleteItem(FoodItem item) async {
     await HiveDbHelper.deleteFoodItem(item.id);
     await NotificationService().cancelNotification(
@@ -117,6 +117,202 @@ class _ExpiryTrackerScreenState extends State<ExpiryTrackerScreen> {
         ),
       );
     }
+  }
+
+  /// فتح نافذة التعديل
+  void _showEditItemSheet(FoodItem item) {
+    final nameCtrl = TextEditingController(text: item.name);
+    final categoryCtrl = TextEditingController(text: item.category);
+    final daysCtrl = TextEditingController(text: item.daysLeft.toString());
+    final weightCtrl = TextEditingController(text: item.weight.toString());
+    final priceCtrl = TextEditingController(text: item.price.toString());
+    String selectedEmoji = item.emoji;
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setSheetState) => DraggableScrollableSheet(
+          initialChildSize: 0.85,
+          maxChildSize: 0.95,
+          minChildSize: 0.5,
+          builder: (_, controller) => Container(
+            decoration: BoxDecoration(
+              color: Theme.of(context).scaffoldBackgroundColor,
+              borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+            ),
+            child: ListView(
+              controller: controller,
+              padding: const EdgeInsets.all(24),
+              children: [
+                Center(
+                  child: Container(
+                    width: 40, height: 4,
+                    decoration: BoxDecoration(
+                      color: Colors.grey.shade300,
+                      borderRadius: BorderRadius.circular(2),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 20),
+                const Text(
+                  '✏️ Edit Bahan Makanan',
+                  style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+                ),
+                const SizedBox(height: 20),
+                const Text('Pilih Ikon:', style: TextStyle(fontWeight: FontWeight.w600)),
+                const SizedBox(height: 8),
+                SizedBox(
+                  height: 52,
+                  child: ListView.builder(
+                    scrollDirection: Axis.horizontal,
+                    itemCount: _emojiOptions.length,
+                    itemBuilder: (_, i) => GestureDetector(
+                      onTap: () => setSheetState(() => selectedEmoji = _emojiOptions[i]),
+                      child: Container(
+                        width: 48, height: 48,
+                        margin: const EdgeInsets.only(right: 8),
+                        decoration: BoxDecoration(
+                          color: selectedEmoji == _emojiOptions[i]
+                              ? Colors.green.shade100 : Colors.grey.shade100,
+                          border: Border.all(
+                            color: selectedEmoji == _emojiOptions[i]
+                                ? Colors.green : Colors.transparent,
+                            width: 2,
+                          ),
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: Center(
+                          child: Text(_emojiOptions[i], style: const TextStyle(fontSize: 24)),
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 16),
+                TextField(
+                  controller: nameCtrl,
+                  decoration: const InputDecoration(
+                    labelText: 'Nama Bahan *',
+                    prefixIcon: Icon(LucideIcons.utensils),
+                    border: OutlineInputBorder(),
+                  ),
+                ),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: categoryCtrl,
+                  decoration: const InputDecoration(
+                    labelText: 'Kategori',
+                    prefixIcon: Icon(LucideIcons.folder),
+                    border: OutlineInputBorder(),
+                  ),
+                ),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: daysCtrl,
+                  keyboardType: TextInputType.number,
+                  decoration: const InputDecoration(
+                    labelText: 'Hari Sebelum Kedaluwarsa *',
+                    prefixIcon: Icon(LucideIcons.calendar),
+                    border: OutlineInputBorder(),
+                  ),
+                ),
+                const SizedBox(height: 12),
+                Row(
+                  children: [
+                    Expanded(
+                      child: TextField(
+                        controller: weightCtrl,
+                        keyboardType: TextInputType.number,
+                        decoration: const InputDecoration(
+                          labelText: 'Berat (kg)',
+                          prefixIcon: Icon(LucideIcons.scale),
+                          border: OutlineInputBorder(),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: TextField(
+                        controller: priceCtrl,
+                        keyboardType: TextInputType.number,
+                        decoration: const InputDecoration(
+                          labelText: 'Harga (Rp)',
+                          prefixIcon: Icon(LucideIcons.wallet),
+                          border: OutlineInputBorder(),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 24),
+                ElevatedButton.icon(
+                  onPressed: () async {
+                    if (nameCtrl.text.trim().isEmpty) return;
+                    final updatedItem = FoodItem(
+                      id: item.id,
+                      emoji: selectedEmoji,
+                      name: nameCtrl.text.trim(),
+                      category: categoryCtrl.text.trim().isEmpty ? 'Umum' : categoryCtrl.text.trim(),
+                      daysLeft: int.tryParse(daysCtrl.text) ?? item.daysLeft,
+                      weight: double.tryParse(weightCtrl.text) ?? item.weight,
+                      price: int.tryParse(priceCtrl.text) ?? item.price,
+                    );
+                    await HiveDbHelper.saveFoodItem(updatedItem);
+                    // أعد جدولة الإشعار
+                    await NotificationService().cancelNotification(int.parse(item.id) % 100000);
+                    final newDays = updatedItem.daysLeft;
+                    final expiryDate = DateTime.now().add(Duration(days: newDays));
+                    await NotificationService().scheduleExpiryNotification(
+                      id: int.parse(item.id) % 100000,
+                      itemName: updatedItem.name,
+                      expiryDate: expiryDate,
+                      daysBeforeExpiry: newDays > 2 ? 2 : 1,
+                    );
+                    _loadItems();
+                    if (mounted) {
+                      Navigator.pop(ctx);
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(
+                          content: Text('✅ ${updatedItem.name} berhasil diperbarui!'),
+                          backgroundColor: Colors.green,
+                        ),
+                      );
+                    }
+                  },
+                  icon: const Icon(LucideIcons.save, color: Colors.white),
+                  label: const Text(
+                    'Simpan Perubahan',
+                    style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16),
+                  ),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.green,
+                    padding: const EdgeInsets.symmetric(vertical: 16),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                  ),
+                ),
+                const SizedBox(height: 8),
+                OutlinedButton.icon(
+                  onPressed: () async {
+                    Navigator.pop(ctx);
+                    await _deleteItem(item);
+                  },
+                  icon: const Icon(LucideIcons.trash2, color: Colors.red),
+                  label: const Text('Hapus Bahan', style: TextStyle(color: Colors.red)),
+                  style: OutlinedButton.styleFrom(
+                    side: const BorderSide(color: Colors.red),
+                    padding: const EdgeInsets.symmetric(vertical: 14),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                  ),
+                ),
+                const SizedBox(height: 16),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
   }
 
   /// Filter items berdasarkan status kedaluwarsa
@@ -422,90 +618,114 @@ class _ExpiryTrackerScreenState extends State<ExpiryTrackerScreen> {
         ),
         child: const Icon(LucideIcons.trash2, color: Colors.white, size: 28),
       ),
+      confirmDismiss: (_) async {
+        return await showDialog<bool>(
+          context: context,
+          builder: (ctx) => AlertDialog(
+            title: const Text('Hapus Bahan?'),
+            content: Text('Yakin ingin menghapus ${item.name}?'),
+            actions: [
+              TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Batal')),
+              TextButton(
+                onPressed: () => Navigator.pop(ctx, true),
+                child: const Text('Hapus', style: TextStyle(color: Colors.red)),
+              ),
+            ],
+          ),
+        ) ?? false;
+      },
       onDismissed: (_) => _deleteItem(item),
-      child: Container(
-        margin: const EdgeInsets.only(bottom: 10),
-        padding: const EdgeInsets.all(14),
-        decoration: BoxDecoration(
-          color: Theme.of(context).cardColor,
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: color.withOpacity(0.3), width: 1.5),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withOpacity(0.05),
-              blurRadius: 6,
-              offset: const Offset(0, 2),
-            ),
-          ],
-        ),
-        child: Row(
-          children: [
-            Container(
-              width: 52, height: 52,
-              decoration: BoxDecoration(
-                color: color.withOpacity(0.1),
-                borderRadius: BorderRadius.circular(12),
+      child: GestureDetector(
+        onLongPress: () => _showEditItemSheet(item),
+        child: Container(
+          margin: const EdgeInsets.only(bottom: 10),
+          padding: const EdgeInsets.all(14),
+          decoration: BoxDecoration(
+            color: Theme.of(context).cardColor,
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: color.withOpacity(0.3), width: 1.5),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withOpacity(0.05),
+                blurRadius: 6,
+                offset: const Offset(0, 2),
               ),
-              child: Center(
-                child: Text(item.emoji, style: const TextStyle(fontSize: 28)),
+            ],
+          ),
+          child: Row(
+            children: [
+              Container(
+                width: 52, height: 52,
+                decoration: BoxDecoration(
+                  color: color.withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Center(
+                  child: Text(item.emoji, style: const TextStyle(fontSize: 28)),
+                ),
               ),
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      item.name,
+                      style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
+                    ),
+                    Text(
+                      item.category,
+                      style: TextStyle(color: Colors.grey.shade500, fontSize: 12),
+                    ),
+                    const SizedBox(height: 4),
+                    Row(
+                      children: [
+                        Icon(LucideIcons.scale, size: 12, color: Colors.grey.shade400),
+                        const SizedBox(width: 4),
+                        Text('${item.weight} kg', style: TextStyle(fontSize: 11, color: Colors.grey.shade500)),
+                        const SizedBox(width: 10),
+                        if (item.price > 0) ...[
+                          Icon(LucideIcons.wallet, size: 12, color: Colors.grey.shade400),
+                          const SizedBox(width: 4),
+                          Text('Rp ${item.price}', style: TextStyle(fontSize: 11, color: Colors.grey.shade500)),
+                        ],
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.end,
                 children: [
-                  Text(
-                    item.name,
-                    style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
-                  ),
-                  Text(
-                    item.category,
-                    style: TextStyle(color: Colors.grey.shade500, fontSize: 12),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                    decoration: BoxDecoration(
+                      color: color,
+                      borderRadius: BorderRadius.circular(20),
+                    ),
+                    child: Text(
+                      label,
+                      style: const TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.bold),
+                    ),
                   ),
                   const SizedBox(height: 4),
-                  Row(
-                    children: [
-                      Icon(LucideIcons.scale, size: 12, color: Colors.grey.shade400),
-                      const SizedBox(width: 4),
-                      Text('${item.weight} kg', style: TextStyle(fontSize: 11, color: Colors.grey.shade500)),
-                      const SizedBox(width: 10),
-                      if (item.price > 0) ...[
-                        Icon(LucideIcons.wallet, size: 12, color: Colors.grey.shade400),
-                        const SizedBox(width: 4),
-                        Text('Rp ${item.price}', style: TextStyle(fontSize: 11, color: Colors.grey.shade500)),
-                      ],
-                    ],
+                  Text(
+                    '${item.daysLeft} hari lagi',
+                    style: TextStyle(
+                      color: color,
+                      fontWeight: FontWeight.bold,
+                      fontSize: 13,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  GestureDetector(
+                    onTap: () => _showEditItemSheet(item),
+                    child: Icon(LucideIcons.pencil, size: 16, color: Colors.grey.shade400),
                   ),
                 ],
               ),
-            ),
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.end,
-              children: [
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                  decoration: BoxDecoration(
-                    color: color,
-                    borderRadius: BorderRadius.circular(20),
-                  ),
-                  child: Text(
-                    label,
-                    style: const TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.bold),
-                  ),
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  '${item.daysLeft} hari lagi',
-                  style: TextStyle(
-                    color: color,
-                    fontWeight: FontWeight.bold,
-                    fontSize: 13,
-                  ),
-                ),
-              ],
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );
