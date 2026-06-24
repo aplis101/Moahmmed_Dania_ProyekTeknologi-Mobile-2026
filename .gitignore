@@ -7,6 +7,9 @@ sisa_pintar_flutter/.flutter-plugins
 sisa_pintar_flutter/.flutter-plugins-dependencies
 sisa_pintar_flutter/pubspec.lock
 
+# ملف الأسرار - لا يُرفع على GitHub أبداً
+sisa_pintar_flutter/.env
+
 # Ignore everything else at the root
 /web_prototype/
 /Diagram_User_Flow/

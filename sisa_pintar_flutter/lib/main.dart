@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:lucide_icons/lucide_icons.dart';
 import 'package:provider/provider.dart';
 import 'database/hive_db_helper.dart';
@@ -9,7 +10,10 @@ import 'screens/dashboard_screen.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  
+
+  // Load environment variables from .env file
+  await dotenv.load(fileName: '.env');
+
   // Initialize Hive storage
   await HiveDbHelper.init();
 
