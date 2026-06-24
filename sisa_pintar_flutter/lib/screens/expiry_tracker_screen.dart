@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:lucide_icons/lucide_icons.dart';
 import '../database/hive_db_helper.dart';
 import '../models/food_item.dart';
+import '../models/history_event.dart';
 import '../services/notification_service.dart';
 
 class ExpiryTrackerScreen extends StatefulWidget {
@@ -117,6 +118,193 @@ class _ExpiryTrackerScreenState extends State<ExpiryTrackerScreen> {
         ),
       );
     }
+  }
+
+  Future<void> _consumeItem(FoodItem item) async {
+    final event = HistoryEvent(
+      id: DateTime.now().millisecondsSinceEpoch.toString(),
+      name: item.name,
+      emoji: item.emoji,
+      weight: item.weight,
+      price: item.price,
+      action: 'consumed',
+      timestamp: DateTime.now().millisecondsSinceEpoch,
+    );
+    await HiveDbHelper.saveHistoryEvent(event);
+    await HiveDbHelper.deleteFoodItem(item.id);
+    await NotificationService().cancelNotification(
+      int.parse(item.id) % 100000,
+    );
+    _loadItems();
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('🍳 ${item.name} dikonsumsi & diselamatkan!'),
+          backgroundColor: Colors.green,
+          behavior: SnackBarBehavior.floating,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        ),
+      );
+    }
+  }
+
+  Future<void> _wasteItem(FoodItem item) async {
+    final event = HistoryEvent(
+      id: DateTime.now().millisecondsSinceEpoch.toString(),
+      name: item.name,
+      emoji: item.emoji,
+      weight: item.weight,
+      price: item.price,
+      action: 'wasted',
+      timestamp: DateTime.now().millisecondsSinceEpoch,
+    );
+    await HiveDbHelper.saveHistoryEvent(event);
+    await HiveDbHelper.deleteFoodItem(item.id);
+    await NotificationService().cancelNotification(
+      int.parse(item.id) % 100000,
+    );
+    _loadItems();
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('🗑️ ${item.name} terbuang'),
+          backgroundColor: Colors.orange.shade800,
+          behavior: SnackBarBehavior.floating,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        ),
+      );
+    }
+  }
+
+  void _showItemActionSheet(FoodItem item) {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) => Container(
+        padding: const EdgeInsets.all(24),
+        decoration: BoxDecoration(
+          color: Theme.of(context).scaffoldBackgroundColor,
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Center(
+              child: Container(
+                width: 40, height: 4,
+                decoration: BoxDecoration(color: Colors.grey.shade300, borderRadius: BorderRadius.circular(2)),
+              ),
+            ),
+            const SizedBox(height: 20),
+            Row(
+              children: [
+                Container(
+                  width: 56, height: 56,
+                  decoration: BoxDecoration(
+                    color: Colors.green.withValues(alpha: 0.1),
+                    borderRadius: BorderRadius.circular(14),
+                  ),
+                  child: Center(
+                    child: Text(item.emoji, style: const TextStyle(fontSize: 32)),
+                  ),
+                ),
+                const SizedBox(width: 16),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(item.name, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                      Text('${item.category} • ${item.daysLeft} hari lagi', style: TextStyle(color: Colors.grey.shade500, fontSize: 13)),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 24),
+            ElevatedButton.icon(
+              onPressed: () async {
+                Navigator.pop(ctx);
+                await _consumeItem(item);
+              },
+              icon: const Icon(LucideIcons.chefHat, color: Colors.white),
+              label: const Text('Sudah Dikonsumsi / Dimasak 🍳', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.green.shade600,
+                padding: const EdgeInsets.symmetric(vertical: 14),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+              ),
+            ),
+            const SizedBox(height: 12),
+            OutlinedButton.icon(
+              onPressed: () async {
+                Navigator.pop(ctx);
+                await _wasteItem(item);
+              },
+              icon: const Icon(LucideIcons.trash2, color: Colors.red),
+              label: const Text('Terbuang / Rusak 🗑️', style: TextStyle(color: Colors.red)),
+              style: OutlinedButton.styleFrom(
+                side: BorderSide(color: Colors.red.shade300),
+                padding: const EdgeInsets.symmetric(vertical: 14),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+              ),
+            ),
+            const SizedBox(height: 12),
+            Row(
+              children: [
+                Expanded(
+                  child: OutlinedButton.icon(
+                    onPressed: () {
+                      Navigator.pop(ctx);
+                      _showEditItemSheet(item);
+                    },
+                    icon: const Icon(LucideIcons.pencil),
+                    label: const Text('Edit Detail'),
+                    style: OutlinedButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(vertical: 12),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: OutlinedButton.icon(
+                    onPressed: () async {
+                      Navigator.pop(ctx);
+                      final confirm = await showDialog<bool>(
+                        context: context,
+                        builder: (alertCtx) => AlertDialog(
+                          title: const Text('Hapus Bahan?'),
+                          content: Text('Yakin ingin menghapus ${item.name} tanpa riwayat?'),
+                          actions: [
+                            TextButton(onPressed: () => Navigator.pop(alertCtx, false), child: const Text('Batal')),
+                            TextButton(
+                              onPressed: () => Navigator.pop(alertCtx, true),
+                              child: const Text('Hapus', style: TextStyle(color: Colors.red)),
+                            ),
+                          ],
+                        ),
+                      );
+                      if (confirm == true) {
+                        await _deleteItem(item);
+                      }
+                    },
+                    icon: const Icon(LucideIcons.x, color: Colors.grey),
+                    label: const Text('Hapus', style: TextStyle(color: Colors.grey)),
+                    style: OutlinedButton.styleFrom(
+                      side: BorderSide(color: Colors.grey.shade300),
+                      padding: const EdgeInsets.symmetric(vertical: 12),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+          ],
+        ),
+      ),
+    );
   }
 
   /// فتح نافذة التعديل
@@ -250,6 +438,9 @@ class _ExpiryTrackerScreenState extends State<ExpiryTrackerScreen> {
                 ElevatedButton.icon(
                   onPressed: () async {
                     if (nameCtrl.text.trim().isEmpty) return;
+                    final messenger = ScaffoldMessenger.of(context);
+                    final nav = Navigator.of(ctx);
+
                     final updatedItem = FoodItem(
                       id: item.id,
                       emoji: selectedEmoji,
@@ -271,15 +462,14 @@ class _ExpiryTrackerScreenState extends State<ExpiryTrackerScreen> {
                       daysBeforeExpiry: newDays > 2 ? 2 : 1,
                     );
                     _loadItems();
-                    if (mounted) {
-                      Navigator.pop(ctx);
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(
-                          content: Text('✅ ${updatedItem.name} berhasil diperbarui!'),
-                          backgroundColor: Colors.green,
-                        ),
-                      );
-                    }
+                    
+                    nav.pop();
+                    messenger.showSnackBar(
+                      SnackBar(
+                        content: Text('✅ ${updatedItem.name} berhasil diperbarui!'),
+                        backgroundColor: Colors.green,
+                      ),
+                    );
                   },
                   icon: const Icon(LucideIcons.save, color: Colors.white),
                   label: const Text(
@@ -586,7 +776,7 @@ class _ExpiryTrackerScreenState extends State<ExpiryTrackerScreen> {
         margin: const EdgeInsets.only(right: 8),
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
         decoration: BoxDecoration(
-          color: isActive ? color : color.withOpacity(0.1),
+          color: isActive ? color : color.withValues(alpha: 0.1),
           borderRadius: BorderRadius.circular(20),
           border: Border.all(color: color, width: 1.5),
         ),
@@ -636,6 +826,7 @@ class _ExpiryTrackerScreenState extends State<ExpiryTrackerScreen> {
       },
       onDismissed: (_) => _deleteItem(item),
       child: GestureDetector(
+        onTap: () => _showItemActionSheet(item),
         onLongPress: () => _showEditItemSheet(item),
         child: Container(
           margin: const EdgeInsets.only(bottom: 10),
@@ -643,10 +834,10 @@ class _ExpiryTrackerScreenState extends State<ExpiryTrackerScreen> {
           decoration: BoxDecoration(
             color: Theme.of(context).cardColor,
             borderRadius: BorderRadius.circular(16),
-            border: Border.all(color: color.withOpacity(0.3), width: 1.5),
+            border: Border.all(color: color.withValues(alpha: 0.3), width: 1.5),
             boxShadow: [
               BoxShadow(
-                color: Colors.black.withOpacity(0.05),
+                color: Colors.black.withValues(alpha: 0.05),
                 blurRadius: 6,
                 offset: const Offset(0, 2),
               ),
@@ -657,7 +848,7 @@ class _ExpiryTrackerScreenState extends State<ExpiryTrackerScreen> {
               Container(
                 width: 52, height: 52,
                 decoration: BoxDecoration(
-                  color: color.withOpacity(0.1),
+                  color: color.withValues(alpha: 0.1),
                   borderRadius: BorderRadius.circular(12),
                 ),
                 child: Center(
