@@ -4,7 +4,7 @@ import 'package:http/http.dart' as http;
 
 class GroqApiService {
   static const String _endpoint = 'https://api.groq.com/openai/v1/chat/completions';
-  static const String _model = 'llama3-8b-8192';
+  static const String _model = 'llama-3.3-70b-versatile';
 
   static String get _apiKey => dotenv.env['GROQ_API_KEY'] ?? '';
 
@@ -45,14 +45,21 @@ class GroqApiService {
         final data = jsonDecode(utf8.decode(response.bodyBytes));
         return data['choices'][0]['message']['content'] as String;
       } else {
-        return _getMockRecipeResponse(ingredients);
+        String msg = 'Status ${response.statusCode}';
+        try {
+          final err = jsonDecode(response.body);
+          if (err['error'] != null && err['error']['message'] != null) {
+            msg = err['error']['message'];
+          }
+        } catch (_) {}
+        return _getMockRecipeResponse(ingredients, errorMessage: 'Koneksi ke API gagal ($msg).');
       }
     } catch (e) {
-      return _getMockRecipeResponse(ingredients);
+      return _getMockRecipeResponse(ingredients, errorMessage: 'Terjadi kesalahan: $e');
     }
   }
 
-  static String _getMockRecipeResponse(List<String> ingredients) {
+  static String _getMockRecipeResponse(List<String> ingredients, {String? errorMessage}) {
     final ingredientList = ingredients.join(', ');
     return '''
 🍳 **Resep Hemat Sisa Bahan: Tumis Serbaguna**
@@ -73,7 +80,7 @@ class GroqApiService {
 
 🌱 *Dengan memanfaatkan sisa bahan, Anda berkontribusi pada SDG 12: Konsumsi Bertanggung Jawab!*
 
-💡 *Catatan: Tambahkan GROQ_API_KEY di file .env untuk mendapatkan resep yang dipersonalisasi oleh AI.*
+${errorMessage != null ? '⚠️ *Catatan Sistem: $errorMessage*' : '💡 *Catatan: Tambahkan GROQ_API_KEY di file .env untuk mendapatkan resep yang dipersonalisasi oleh AI.*'}
 ''';
   }
 }
