@@ -1,17 +1,32 @@
-# ملف .gitignore لمشروع SisaPintar
+# ═══════════════════════════════════════════
+#  .gitignore — SisaPintar Flutter Project
+#  رُفِع بواسطة: Mohammed Rashed (2406016105)
+# ═══════════════════════════════════════════
 
-# Flutter build artifacts
-sisa_pintar_flutter/.dart_tool/
+# ─── 🔐 ملفات الأسرار (لا تُرفع أبداً) ───
+sisa_pintar_flutter/.env
+*.env
+
+# ─── 🏗️ مخرجات البناء (Build Artifacts) ───
 sisa_pintar_flutter/build/
+sisa_pintar_flutter/.dart_tool/
 sisa_pintar_flutter/.flutter-plugins
 sisa_pintar_flutter/.flutter-plugins-dependencies
+
+# ─── 📦 ملفات Flutter الداخلية ───
+sisa_pintar_flutter/.metadata
 sisa_pintar_flutter/pubspec.lock
+sisa_pintar_flutter/.flutter-plugins-dependencies
+sisa_pintar_flutter/sisa_pintar.iml
+sisa_pintar_flutter/.idea/
 
-# ملف الأسرار - لا يُرفع على GitHub أبداً
-sisa_pintar_flutter/.env
+# ─── 🖥️ ملفات منصات Desktop (غير مطلوبة للموبايل) ───
+sisa_pintar_flutter/linux/
+sisa_pintar_flutter/macos/
+sisa_pintar_flutter/windows/
+sisa_pintar_flutter/web/
 
-# Ignore everything else at the root
-/web_prototype/
+# ─── 📄 وثائق داخلية وملفات العمل (لا تُرفع) ───
 /Diagram_User_Flow/
 /Minggu_08_Panduan/
 /Minggu_09_Panduan/
@@ -20,8 +35,31 @@ sisa_pintar_flutter/.env
 /Matriks_Pemenuhan_Tugas.md
 /Modul_Proyek_Teknologi_Mobile_SDGs.pdf
 /Konten_Poster_SisaPintar.md
+/web_prototype/
+*.docx
+*.pdf
+*.tex
 
-# Common ignores
-*.log
+# ─── 🖥️ ملفات النظام (System Files) ───
 .DS_Store
 Thumbs.db
+*.log
+*.tmp
+Desktop.ini
+
+# ─── 🔧 بيئات التطوير (IDEs) ───
+.vscode/settings.json
+.vscode/launch.json
+.idea/
+*.iml
+
+# ─── ما يجب رفعه ✅ ───
+# sisa_pintar_flutter/lib/          ← كود Dart الرئيسي
+# sisa_pintar_flutter/assets/       ← الأيقونة والأصول
+# sisa_pintar_flutter/android/      ← إعدادات Android + أيقونة مولّدة
+# sisa_pintar_flutter/ios/          ← إعدادات iOS + أيقونة مولّدة
+# sisa_pintar_flutter/pubspec.yaml  ← تعريف المكتبات
+# sisa_pintar_flutter/test/         ← ملفات الاختبار
+# README.md                         ← توثيق المشروع
+# دليل_المشروع_SisaPintar.md       ← الدليل العربي
+# icon.png                          ← الأيقونة الأصلية

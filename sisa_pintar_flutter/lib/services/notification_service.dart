@@ -13,21 +13,25 @@ class NotificationService {
 
   /// تهيئة خدمة الإشعارات عند بدء التطبيق
   Future<void> initialize() async {
-    // Note: tz.initializeTimeZones() is called in main() before this
-    const androidSettings =
-        AndroidInitializationSettings('@mipmap/ic_launcher');
-    const iosSettings = DarwinInitializationSettings(
-      requestAlertPermission: true,
-      requestBadgePermission: true,
-      requestSoundPermission: true,
-    );
+    try {
+      // Note: tz.initializeTimeZones() is called in main() before this
+      const androidSettings =
+          AndroidInitializationSettings('@mipmap/ic_launcher');
+      const iosSettings = DarwinInitializationSettings(
+        requestAlertPermission: true,
+        requestBadgePermission: true,
+        requestSoundPermission: true,
+      );
 
-    const initSettings = InitializationSettings(
-      android: androidSettings,
-      iOS: iosSettings,
-    );
+      const initSettings = InitializationSettings(
+        android: androidSettings,
+        iOS: iosSettings,
+      );
 
-    await _plugin.initialize(initSettings);
+      await _plugin.initialize(initSettings);
+    } catch (e) {
+      debugPrint('NotificationService: Failed to initialize. This is expected on unsupported platforms (like Windows/Web): $e');
+    }
   }
 
   /// جدولة إشعار لمادة غذائية على وشك الانتهاء
@@ -41,54 +45,66 @@ class NotificationService {
     required DateTime expiryDate,
     int daysBeforeExpiry = 2,
   }) async {
-    final notifyDate = expiryDate.subtract(Duration(days: daysBeforeExpiry));
+    try {
+      final notifyDate = expiryDate.subtract(Duration(days: daysBeforeExpiry));
 
-    // إذا كان التاريخ في الماضي، لا تجدول
-    if (notifyDate.isBefore(DateTime.now())) return;
+      // إذا كان التاريخ في الماضي، لا تجدول
+      if (notifyDate.isBefore(DateTime.now())) return;
 
-    final scheduledDate = tz.TZDateTime.from(notifyDate, tz.local);
+      final scheduledDate = tz.TZDateTime.from(notifyDate, tz.local);
 
-    const androidDetails = AndroidNotificationDetails(
-      'expiry_channel',
-      'Pengingat Kedaluwarsa',
-      channelDescription: 'Notifikasi pengingat bahan makanan akan kedaluwarsa',
-      importance: Importance.high,
-      priority: Priority.high,
-      icon: '@mipmap/ic_launcher',
-      color: Color(0xFF4CAF50),
-    );
+      const androidDetails = AndroidNotificationDetails(
+        'expiry_channel',
+        'Pengingat Kedaluwarsa',
+        channelDescription: 'Notifikasi pengingat bahan makanan akan kedaluwarsa',
+        importance: Importance.high,
+        priority: Priority.high,
+        icon: '@mipmap/ic_launcher',
+        color: Color(0xFF4CAF50),
+      );
 
-    const iosDetails = DarwinNotificationDetails(
-      presentAlert: true,
-      presentBadge: true,
-      presentSound: true,
-    );
+      const iosDetails = DarwinNotificationDetails(
+        presentAlert: true,
+        presentBadge: true,
+        presentSound: true,
+      );
 
-    const notifDetails = NotificationDetails(
-      android: androidDetails,
-      iOS: iosDetails,
-    );
+      const notifDetails = NotificationDetails(
+        android: androidDetails,
+        iOS: iosDetails,
+      );
 
-    await _plugin.zonedSchedule(
-      id,
-      '⚠️ $itemName akan kedaluwarsa!',
-      '$itemName akan kedaluwarsa dalam $daysBeforeExpiry hari. Segera masak untuk kurangi food waste! 🌿',
-      scheduledDate,
-      notifDetails,
-      androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
-      uiLocalNotificationDateInterpretation:
-          UILocalNotificationDateInterpretation.absoluteTime,
-    );
+      await _plugin.zonedSchedule(
+        id,
+        '⚠️ $itemName akan kedaluwarsa!',
+        '$itemName akan kedaluwarsa dalam $daysBeforeExpiry hari. Segera masak untuk kurangi food waste! 🌿',
+        scheduledDate,
+        notifDetails,
+        androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
+        uiLocalNotificationDateInterpretation:
+            UILocalNotificationDateInterpretation.absoluteTime,
+      );
+    } catch (e) {
+      debugPrint('NotificationService: Failed to schedule expiry notification for $itemName: $e');
+    }
   }
 
   /// إلغاء إشعار محدد
   Future<void> cancelNotification(int id) async {
-    await _plugin.cancel(id);
+    try {
+      await _plugin.cancel(id);
+    } catch (e) {
+      debugPrint('NotificationService: Failed to cancel notification with id $id: $e');
+    }
   }
 
   /// إلغاء جميع الإشعارات
   Future<void> cancelAllNotifications() async {
-    await _plugin.cancelAll();
+    try {
+      await _plugin.cancelAll();
+    } catch (e) {
+      debugPrint('NotificationService: Failed to cancel all notifications: $e');
+    }
   }
 
   /// إرسال إشعار فوري (للاختبار)
@@ -96,16 +112,20 @@ class NotificationService {
     required String title,
     required String body,
   }) async {
-    const androidDetails = AndroidNotificationDetails(
-      'expiry_channel',
-      'Pengingat Kedaluwarsa',
-      channelDescription: 'Notifikasi pengingat bahan makanan akan kedaluwarsa',
-      importance: Importance.high,
-      priority: Priority.high,
-    );
+    try {
+      const androidDetails = AndroidNotificationDetails(
+        'expiry_channel',
+        'Pengingat Kedaluwarsa',
+        channelDescription: 'Notifikasi pengingat bahan makanan akan kedaluwarsa',
+        importance: Importance.high,
+        priority: Priority.high,
+      );
 
-    const notifDetails = NotificationDetails(android: androidDetails);
+      const notifDetails = NotificationDetails(android: androidDetails);
 
-    await _plugin.show(0, title, body, notifDetails);
+      await _plugin.show(0, title, body, notifDetails);
+    } catch (e) {
+      debugPrint('NotificationService: Failed to show immediate notification: $e');
+    }
   }
 }

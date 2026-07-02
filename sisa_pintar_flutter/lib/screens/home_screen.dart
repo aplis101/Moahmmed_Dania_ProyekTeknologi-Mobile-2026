@@ -1,9 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:lucide_icons/lucide_icons.dart';
+import 'package:provider/provider.dart';
 import '../database/hive_db_helper.dart';
 import '../models/food_item.dart';
 import '../models/history_event.dart';
 import '../services/notification_service.dart';
+import '../services/localization_service.dart';
+import '../main.dart';
 
 class HomeScreen extends StatefulWidget {
   final VoidCallback onToggleDarkMode;
@@ -26,28 +29,78 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
   late Animation<double> _fadeAnim;
   late Animation<Offset> _slideAnim;
 
-  final List<Map<String, String>> _tips = [
-    {
-      'emoji': '🥬',
-      'title': 'Simpan Bayam dengan Benar',
-      'body': 'Bungkus bayam dengan tisu dapur lembab sebelum dimasukkan kulkas agar tahan 5 hari lebih lama.',
-    },
-    {
-      'emoji': '🍚',
-      'title': 'Manfaatkan Sisa Nasi',
-      'body': 'Nasi sisa kemarin bisa dijadikan nasi goreng lezat dengan telur dan bumbu sederhana.',
-    },
-    {
-      'emoji': '🍌',
-      'title': 'Bekukan Buah Matang',
-      'body': 'Buah yang terlalu matang bisa dibekukan dan digunakan sebagai bahan smoothie.',
-    },
-    {
-      'emoji': '🧅',
-      'title': 'Bawang Tahan Lama',
-      'body': 'Simpan bawang di tempat gelap dan kering agar tahan hingga 2 bulan.',
-    },
-  ];
+  List<Map<String, String>> _getTips(String lang) {
+    if (lang == 'ar') {
+      return [
+        {
+          'emoji': '🥬',
+          'title': 'حفظ السبانخ بشكل صحيح',
+          'body': 'قم بلف السبانخ بمناديل ورقية رطبة قليلاً قبل وضعها في الثلاجة لتستمر 5 أيام إضافية.',
+        },
+        {
+          'emoji': '🍚',
+          'title': 'الاستفادة من الأرز المتبقي',
+          'body': 'يمكن تحويل الأرز المتبقي من الأمس إلى أرز مقلي لذيذ بإضافة البيض والتوابل البسيطة.',
+        },
+        {
+          'emoji': '🍌',
+          'title': 'تجميد الفاكهة الناضجة',
+          'body': 'يمكن تجميد الفاكهة شديدة النضج واستخدامها لاحقاً كمكون أساسي في السموذي.',
+        },
+        {
+          'emoji': '🧅',
+          'title': 'البصل يدوم طويلاً',
+          'body': 'احفظ البصل في مكان مظلم وجاف ليدوم صالحاً لمدة تصل إلى شهرين.',
+        },
+      ];
+    } else if (lang == 'en') {
+      return [
+        {
+          'emoji': '🥬',
+          'title': 'Store Spinach Correctly',
+          'body': 'Wrap spinach in a damp paper towel before placing it in the fridge to keep it fresh for 5 extra days.',
+        },
+        {
+          'emoji': '🍚',
+          'title': 'Use Leftover Rice',
+          'body': 'Yesterday\'s rice can be turned into delicious fried rice with eggs and simple seasonings.',
+        },
+        {
+          'emoji': '🍌',
+          'title': 'Freeze Ripe Fruit',
+          'body': 'Overripe fruit can be frozen and used later as a base for smoothies.',
+        },
+        {
+          'emoji': '🧅',
+          'title': 'Onions Last Longer',
+          'body': 'Keep onions in a dark, dry place to make them last up to 2 months.',
+        },
+      ];
+    } else {
+      return [
+        {
+          'emoji': '🥬',
+          'title': 'Simpan Bayam dengan Benar',
+          'body': 'Bungkus bayam dengan tisu dapur lembab sebelum dimasukkan kulkas agar tahan 5 hari lebih lama.',
+        },
+        {
+          'emoji': '🍚',
+          'title': 'Manfaatkan Sisa Nasi',
+          'body': 'Nasi sisa kemarin bisa dijadikan nasi goreng lezat dengan telur dan bumbu sederhana.',
+        },
+        {
+          'emoji': '🍌',
+          'title': 'Bekukan Buah Matang',
+          'body': 'Buah yang terlalu matang bisa dibekukan dan digunakan sebagai bahan smoothie.',
+        },
+        {
+          'emoji': '🧅',
+          'title': 'Bawang Tahan Lama',
+          'body': 'Simpan bawang di tempat gelap dan kering agar tahan hingga 2 bulan.',
+        },
+      ];
+    }
+  }
 
   @override
   void initState() {
@@ -68,7 +121,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
     super.dispose();
   }
 
-  Future<void> _consumeItem(FoodItem item) async {
+  Future<void> _consumeItem(FoodItem item, String lang) async {
     final event = HistoryEvent(
       id: DateTime.now().millisecondsSinceEpoch.toString(),
       name: item.name,
@@ -85,9 +138,13 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
     );
     setState(() {});
     if (mounted) {
+      final snackTemplate = LocalizationService.get(lang, 'cooking_done_snack', args: {
+        'count': '1',
+        'money': item.price.toString()
+      });
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('🍳 ${item.name} dikonsumsi & diselamatkan!'),
+          content: Text(snackTemplate),
           backgroundColor: Colors.green,
           behavior: SnackBarBehavior.floating,
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
@@ -96,7 +153,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
     }
   }
 
-  Future<void> _wasteItem(FoodItem item) async {
+  Future<void> _wasteItem(FoodItem item, String lang) async {
     final event = HistoryEvent(
       id: DateTime.now().millisecondsSinceEpoch.toString(),
       name: item.name,
@@ -115,7 +172,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('🗑️ ${item.name} terbuang'),
+          content: Text(LocalizationService.get(lang, 'deleted_msg', args: {'name': item.name})),
           backgroundColor: Colors.orange.shade800,
           behavior: SnackBarBehavior.floating,
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
@@ -124,7 +181,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
     }
   }
 
-  void _showItemActionSheet(FoodItem item) {
+  void _showItemActionSheet(FoodItem item, String lang) {
     showModalBottomSheet(
       context: context,
       backgroundColor: Colors.transparent,
@@ -163,7 +220,10 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(item.name, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-                      Text('${item.category} • ${item.daysLeft} hari lagi', style: TextStyle(color: Colors.grey.shade500, fontSize: 13)),
+                      Text(
+                        '${item.category} • ${LocalizationService.get(lang, 'days_left', args: {'count': item.daysLeft.toString()})}',
+                        style: TextStyle(color: Colors.grey.shade500, fontSize: 13),
+                      ),
                     ],
                   ),
                 ),
@@ -173,10 +233,15 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
             ElevatedButton.icon(
               onPressed: () async {
                 Navigator.pop(ctx);
-                await _consumeItem(item);
+                await _consumeItem(item, lang);
               },
               icon: const Icon(LucideIcons.chefHat, color: Colors.white),
-              label: const Text('Sudah Dikonsumsi / Dimasak 🍳', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+              label: Text(
+                lang == 'ar'
+                    ? 'تم الاستهلاك / الطبخ 🍳'
+                    : (lang == 'en' ? 'Consumed / Cooked 🍳' : 'Sudah Dikonsumsi / Dimasak 🍳'),
+                style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+              ),
               style: ElevatedButton.styleFrom(
                 backgroundColor: Colors.green.shade600,
                 padding: const EdgeInsets.symmetric(vertical: 14),
@@ -187,10 +252,15 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
             OutlinedButton.icon(
               onPressed: () async {
                 Navigator.pop(ctx);
-                await _wasteItem(item);
+                await _wasteItem(item, lang);
               },
               icon: const Icon(LucideIcons.trash2, color: Colors.red),
-              label: const Text('Terbuang / Rusak 🗑️', style: TextStyle(color: Colors.red)),
+              label: Text(
+                lang == 'ar'
+                    ? 'مهدور / تالف 🗑️'
+                    : (lang == 'en' ? 'Wasted / Spoiled 🗑️' : 'Terbuang / Rusak 🗑️'),
+                style: const TextStyle(color: Colors.red),
+              ),
               style: OutlinedButton.styleFrom(
                 side: BorderSide(color: Colors.red.shade300),
                 padding: const EdgeInsets.symmetric(vertical: 14),
@@ -207,7 +277,11 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                       widget.onNavigateToTab(2);
                     },
                     icon: const Icon(LucideIcons.pencil),
-                    label: const Text('Ubah di Tracker'),
+                    label: Text(
+                      lang == 'ar'
+                          ? 'تعديل في المتتبع'
+                          : (lang == 'en' ? 'Edit in Tracker' : 'Ubah di Tracker'),
+                    ),
                     style: OutlinedButton.styleFrom(
                       padding: const EdgeInsets.symmetric(vertical: 12),
                       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
@@ -221,7 +295,10 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                       Navigator.pop(ctx);
                     },
                     icon: const Icon(LucideIcons.x, color: Colors.grey),
-                    label: const Text('Tutup', style: TextStyle(color: Colors.grey)),
+                    label: Text(
+                      LocalizationService.get(lang, 'cancel'),
+                      style: const TextStyle(color: Colors.grey),
+                    ),
                     style: OutlinedButton.styleFrom(
                       side: BorderSide(color: Colors.grey.shade300),
                       padding: const EdgeInsets.symmetric(vertical: 12),
@@ -240,6 +317,9 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
 
   @override
   Widget build(BuildContext context) {
+    final settingsProvider = Provider.of<AppSettingsProvider>(context);
+    final lang = settingsProvider.currentLanguage;
+
     final foodItems = HiveDbHelper.getFoodItems();
     final historyEvents = HiveDbHelper.getHistoryEvents();
 
@@ -251,12 +331,13 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
     final recipesCookedCount = consumedItems.length + 3;
 
     final bool hasCritical = criticalItems.isNotEmpty;
+    final tips = _getTips(lang);
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text(
-          'SisaPintar',
-          style: TextStyle(fontWeight: FontWeight.bold, color: Colors.green, letterSpacing: 0.5),
+        title: Text(
+          LocalizationService.get(lang, 'app_title'),
+          style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.green, letterSpacing: 0.5),
         ),
         elevation: 0,
         scrolledUnderElevation: 1,
@@ -270,7 +351,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
               ),
             ),
             onPressed: widget.onToggleDarkMode,
-            tooltip: 'Ganti Tema',
+            tooltip: lang == 'ar' ? 'تغيير المظهر' : 'Ganti Tema',
           ),
           Stack(
             alignment: Alignment.center,
@@ -318,17 +399,17 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   // Greeting
-                  const Text(
-                    'Selamat datang, Mohammed! 👋',
-                    style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
+                  Text(
+                    LocalizationService.get(lang, 'welcome'),
+                    style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
                   ),
                   const SizedBox(height: 4),
                   AnimatedSwitcher(
                     duration: const Duration(milliseconds: 400),
                     child: Text(
                       hasCritical
-                          ? '⚠️ Kamu punya ${criticalItems.length} bahan yang hampir kedaluwarsa!'
-                          : '✅ Semua bahan makananmu aman! 🌿',
+                          ? LocalizationService.get(lang, 'critical_alert', args: {'count': criticalItems.length.toString()})
+                          : LocalizationService.get(lang, 'all_safe'),
                       key: ValueKey(hasCritical),
                       style: TextStyle(
                         fontSize: 13,
@@ -340,24 +421,27 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                   const SizedBox(height: 16),
 
                   // Hero Eco Card
-                  _buildHeroCard(totalSavedWeight, totalSavedMoney, recipesCookedCount, hasCritical),
+                  _buildHeroCard(totalSavedWeight, totalSavedMoney, recipesCookedCount, hasCritical, lang),
                   const SizedBox(height: 16),
 
-                  // Critical items horizontal scroll (only if exists)
+                  // Critical items horizontal scroll
                   if (hasCritical) ...[
                     Row(
                       children: [
                         const Text('⚠️', style: TextStyle(fontSize: 14)),
                         const SizedBox(width: 6),
-                        const Expanded(
+                        Expanded(
                           child: Text(
-                            'Bahan Segera Kedaluwarsa',
-                            style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold),
+                            LocalizationService.get(lang, 'expiring_soon_title'),
+                            style: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold),
                           ),
                         ),
                         TextButton(
                           onPressed: () => widget.onNavigateToTab(2),
-                          child: const Text('Lihat semua →', style: TextStyle(fontSize: 12)),
+                          child: Text(
+                            LocalizationService.get(lang, 'view_all'),
+                            style: const TextStyle(fontSize: 12),
+                          ),
                         ),
                       ],
                     ),
@@ -374,7 +458,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                             duration: Duration(milliseconds: 300 + i * 80),
                             builder: (_, v, child) => Opacity(opacity: v, child: child),
                             child: GestureDetector(
-                              onTap: () => _showItemActionSheet(item),
+                              onTap: () => _showItemActionSheet(item, lang),
                               child: Container(
                                 width: 140,
                                 margin: const EdgeInsets.only(right: 10),
@@ -398,7 +482,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                                               maxLines: 1,
                                               overflow: TextOverflow.ellipsis),
                                           Text(
-                                            '${item.daysLeft} hari lagi',
+                                            LocalizationService.get(lang, 'days_left', args: {'count': item.daysLeft.toString()}),
                                             style: TextStyle(color: Colors.red.shade600, fontSize: 11, fontWeight: FontWeight.w600),
                                           ),
                                         ],
@@ -420,8 +504,8 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                     children: [
                       Expanded(
                         child: _buildActionCard(
-                          title: 'Cari Resep AI',
-                          subtitle: 'Dari sisa bahanmu',
+                          title: LocalizationService.get(lang, 'quick_recipe_ai'),
+                          subtitle: LocalizationService.get(lang, 'quick_recipe_desc'),
                           emoji: '👨‍🍳',
                           color: Colors.green.withValues(alpha: 0.05),
                           accentColor: Colors.green.shade700,
@@ -431,10 +515,10 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                       const SizedBox(width: 12),
                       Expanded(
                         child: _buildActionCard(
-                          title: 'Expiry Tracker',
+                          title: LocalizationService.get(lang, 'tracker'),
                           subtitle: hasCritical
-                              ? '${criticalItems.length} bahan kritis!'
-                              : '${foodItems.length} bahan aman',
+                              ? LocalizationService.get(lang, 'quick_tracker_desc_critical', args: {'count': criticalItems.length.toString()})
+                              : LocalizationService.get(lang, 'quick_tracker_desc_safe', args: {'count': foodItems.length.toString()}),
                           emoji: '📅',
                           color: hasCritical ? Colors.red.withValues(alpha: 0.05) : Colors.green.withValues(alpha: 0.05),
                           accentColor: hasCritical ? Colors.red.shade700 : Colors.green.shade700,
@@ -447,10 +531,13 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
 
                   // Tips Section
                   Row(
-                    children: const [
-                      Text('💡', style: TextStyle(fontSize: 16)),
-                      SizedBox(width: 6),
-                      Text('Tips Hari Ini', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                    children: [
+                      const Text('💡', style: TextStyle(fontSize: 16)),
+                      const SizedBox(width: 6),
+                      Text(
+                        LocalizationService.get(lang, 'today_tips'),
+                        style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                      ),
                     ],
                   ),
                   const SizedBox(height: 10),
@@ -458,9 +545,9 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                     height: 120,
                     child: ListView.builder(
                       scrollDirection: Axis.horizontal,
-                      itemCount: _tips.length,
+                      itemCount: tips.length,
                       itemBuilder: (_, i) {
-                        final tip = _tips[i];
+                        final tip = tips[i];
                         return TweenAnimationBuilder<double>(
                           tween: Tween(begin: 0.0, end: 1.0),
                           duration: Duration(milliseconds: 400 + i * 100),
@@ -480,7 +567,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
     );
   }
 
-  Widget _buildHeroCard(double weight, int money, int recipes, bool hasCritical) {
+  Widget _buildHeroCard(double weight, int money, int recipes, bool hasCritical, String lang) {
     return AnimatedContainer(
       duration: const Duration(milliseconds: 500),
       width: double.infinity,
@@ -506,12 +593,12 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
-            children: const [
-              Text('🌿', style: TextStyle(fontSize: 16)),
-              SizedBox(width: 6),
+            children: [
+              const Text('🌿', style: TextStyle(fontSize: 16)),
+              const SizedBox(width: 6),
               Text(
-                'Dampak Eco-mu Minggu Ini',
-                style: TextStyle(color: Color(0xE5FFFFFF), fontSize: 13, fontWeight: FontWeight.w500),
+                LocalizationService.get(lang, 'eco_impact'),
+                style: const TextStyle(color: Color(0xE5FFFFFF), fontSize: 13, fontWeight: FontWeight.w500),
               ),
             ],
           ),
@@ -520,7 +607,10 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
             '${weight.toStringAsFixed(1)} kg',
             style: const TextStyle(fontSize: 38, fontWeight: FontWeight.bold, color: Colors.white, height: 1.1),
           ),
-          const Text('makanan diselamatkan', style: TextStyle(color: Colors.white70, fontSize: 12)),
+          Text(
+            LocalizationService.get(lang, 'food_saved'),
+            style: const TextStyle(color: Colors.white70, fontSize: 12),
+          ),
           const Padding(
             padding: EdgeInsets.symmetric(vertical: 12),
             child: Divider(color: Colors.white24, height: 1),
@@ -529,13 +619,13 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
             children: [
               Expanded(
                 child: Text(
-                  '💰 Rp $money dihemat',
+                  '💰 Rp $money ${LocalizationService.get(lang, 'money_saved')}',
                   style: const TextStyle(color: Color(0xE5FFFFFF), fontWeight: FontWeight.bold, fontSize: 12),
                 ),
               ),
               Expanded(
                 child: Text(
-                  '🍳 $recipes resep dimasak',
+                  '🍳 $recipes ${LocalizationService.get(lang, 'recipes_cooked')}',
                   style: const TextStyle(color: Color(0xE5FFFFFF), fontWeight: FontWeight.bold, fontSize: 12),
                 ),
               ),

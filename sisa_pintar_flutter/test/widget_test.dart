@@ -6,7 +6,7 @@ void main() {
   testWidgets('SisaPintar app smoke test', (WidgetTester tester) async {
     await tester.pumpWidget(
       ChangeNotifierProvider(
-        create: (_) => AppThemeProvider(),
+        create: (_) => AppSettingsProvider(),
         child: const SisaPintarApp(),
       ),
     );

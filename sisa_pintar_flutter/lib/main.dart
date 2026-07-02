@@ -1,15 +1,18 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
+import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:lucide_icons/lucide_icons.dart';
 import 'package:provider/provider.dart';
 import 'package:timezone/data/latest.dart' as tz;
 import 'package:timezone/timezone.dart' as tz;
 import 'database/hive_db_helper.dart';
 import 'services/notification_service.dart';
+import 'services/localization_service.dart';
 import 'screens/home_screen.dart';
 import 'screens/expiry_tracker_screen.dart';
 import 'screens/recipe_screen.dart';
 import 'screens/dashboard_screen.dart';
+import 'screens/settings_screen.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -21,26 +24,41 @@ void main() async {
   tz.initializeTimeZones();
   tz.setLocalLocation(tz.getLocation('Asia/Jakarta'));
 
+  // Initialize Hive storage first so we can read settings in AppSettingsProvider
+  await HiveDbHelper.init();
+
   // Initialize Notification Service
   await NotificationService().initialize();
 
-  // Initialize Hive storage
-  await HiveDbHelper.init();
-
   runApp(
     ChangeNotifierProvider(
-      create: (context) => AppThemeProvider(),
+      create: (context) => AppSettingsProvider(),
       child: const SisaPintarApp(),
     ),
   );
 }
 
-class AppThemeProvider extends ChangeNotifier {
+class AppSettingsProvider extends ChangeNotifier {
   bool _isDarkMode = false;
+  String _currentLanguage = 'id';
+
   bool get isDarkMode => _isDarkMode;
+  String get currentLanguage => _currentLanguage;
+
+  AppSettingsProvider() {
+    _isDarkMode = HiveDbHelper.getDarkTheme();
+    _currentLanguage = HiveDbHelper.getAppLanguage();
+  }
 
   void toggleTheme() {
     _isDarkMode = !_isDarkMode;
+    HiveDbHelper.saveDarkTheme(_isDarkMode);
+    notifyListeners();
+  }
+
+  void setLanguage(String lang) {
+    _currentLanguage = lang;
+    HiveDbHelper.saveAppLanguage(lang);
     notifyListeners();
   }
 }
@@ -50,12 +68,23 @@ class SisaPintarApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final themeProvider = Provider.of<AppThemeProvider>(context);
+    final settingsProvider = Provider.of<AppSettingsProvider>(context);
 
     return MaterialApp(
       title: 'SisaPintar',
       debugShowCheckedModeBanner: false,
-      themeMode: themeProvider.isDarkMode ? ThemeMode.dark : ThemeMode.light,
+      themeMode: settingsProvider.isDarkMode ? ThemeMode.dark : ThemeMode.light,
+      locale: Locale(settingsProvider.currentLanguage),
+      supportedLocales: const [
+        Locale('ar'),
+        Locale('en'),
+        Locale('id'),
+      ],
+      localizationsDelegates: const [
+        GlobalMaterialLocalizations.delegate,
+        GlobalWidgetsLocalizations.delegate,
+        GlobalCupertinoLocalizations.delegate,
+      ],
       theme: ThemeData(
         useMaterial3: true,
         colorScheme: ColorScheme.fromSeed(
@@ -109,9 +138,10 @@ class _MainNavigationShellState extends State<MainNavigationShell> {
 
   @override
   Widget build(BuildContext context) {
-    final themeProvider = Provider.of<AppThemeProvider>(context);
-    final isDark = themeProvider.isDarkMode;
-    final toggle = themeProvider.toggleTheme;
+    final settingsProvider = Provider.of<AppSettingsProvider>(context);
+    final isDark = settingsProvider.isDarkMode;
+    final toggle = settingsProvider.toggleTheme;
+    final lang = settingsProvider.currentLanguage;
 
     final List<Widget> screens = [
       HomeScreen(
@@ -124,8 +154,9 @@ class _MainNavigationShellState extends State<MainNavigationShell> {
         },
       ),
       RecipeScreen(isDarkMode: isDark, onToggleDarkMode: toggle),
-      ExpiryTrackerScreen(),
+      const ExpiryTrackerScreen(),
       DashboardScreen(isDarkMode: isDark, onToggleDarkMode: toggle),
+      const SettingsScreen(),
     ];
 
     return Scaffold(
@@ -146,26 +177,31 @@ class _MainNavigationShellState extends State<MainNavigationShell> {
         showUnselectedLabels: true,
         selectedLabelStyle: const TextStyle(fontWeight: FontWeight.bold, fontSize: 11),
         unselectedLabelStyle: const TextStyle(fontSize: 10),
-        items: const [
+        items: [
           BottomNavigationBarItem(
-            icon: Icon(LucideIcons.home),
-            activeIcon: Icon(LucideIcons.home, color: Color(0xFF2E7D32)),
-            label: 'Beranda',
+            icon: const Icon(LucideIcons.home),
+            activeIcon: const Icon(LucideIcons.home, color: Color(0xFF2E7D32)),
+            label: LocalizationService.get(lang, 'home'),
           ),
           BottomNavigationBarItem(
-            icon: Icon(LucideIcons.chefHat),
-            activeIcon: Icon(LucideIcons.chefHat, color: Color(0xFF2E7D32)),
-            label: 'Resep',
+            icon: const Icon(LucideIcons.chefHat),
+            activeIcon: const Icon(LucideIcons.chefHat, color: Color(0xFF2E7D32)),
+            label: LocalizationService.get(lang, 'recipe'),
           ),
           BottomNavigationBarItem(
-            icon: Icon(LucideIcons.calendar),
-            activeIcon: Icon(LucideIcons.calendar, color: Color(0xFF2E7D32)),
-            label: 'Tracker',
+            icon: const Icon(LucideIcons.calendar),
+            activeIcon: const Icon(LucideIcons.calendar, color: Color(0xFF2E7D32)),
+            label: LocalizationService.get(lang, 'tracker'),
           ),
           BottomNavigationBarItem(
-            icon: Icon(LucideIcons.barChart2),
-            activeIcon: Icon(LucideIcons.barChart2, color: Color(0xFF2E7D32)),
-            label: 'Dashboard',
+            icon: const Icon(LucideIcons.barChart2),
+            activeIcon: const Icon(LucideIcons.barChart2, color: Color(0xFF2E7D32)),
+            label: LocalizationService.get(lang, 'dashboard'),
+          ),
+          BottomNavigationBarItem(
+            icon: const Icon(LucideIcons.settings),
+            activeIcon: const Icon(LucideIcons.settings, color: Color(0xFF2E7D32)),
+            label: LocalizationService.get(lang, 'settings'),
           ),
         ],
       ),

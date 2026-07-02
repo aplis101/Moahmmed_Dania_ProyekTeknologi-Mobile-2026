@@ -1,9 +1,13 @@
 import 'package:flutter/material.dart';
+import 'package:hive_flutter/hive_flutter.dart';
 import 'package:lucide_icons/lucide_icons.dart';
+import 'package:provider/provider.dart';
 import '../database/hive_db_helper.dart';
 import '../models/food_item.dart';
 import '../models/history_event.dart';
 import '../services/notification_service.dart';
+import '../services/localization_service.dart';
+import '../main.dart';
 
 class ExpiryTrackerScreen extends StatefulWidget {
   const ExpiryTrackerScreen({super.key});
@@ -13,7 +17,6 @@ class ExpiryTrackerScreen extends StatefulWidget {
 }
 
 class _ExpiryTrackerScreenState extends State<ExpiryTrackerScreen> {
-  List<FoodItem> _items = [];
   String _activeFilter = 'semua';
 
   // Controllers untuk form tambah bahan
@@ -29,12 +32,6 @@ class _ExpiryTrackerScreenState extends State<ExpiryTrackerScreen> {
   ];
 
   @override
-  void initState() {
-    super.initState();
-    _loadItems();
-  }
-
-  @override
   void dispose() {
     _nameController.dispose();
     _categoryController.dispose();
@@ -44,15 +41,8 @@ class _ExpiryTrackerScreenState extends State<ExpiryTrackerScreen> {
     super.dispose();
   }
 
-  /// Muat data dari Hive
-  void _loadItems() {
-    setState(() {
-      _items = HiveDbHelper.getFoodItems();
-    });
-  }
-
   /// Simpan bahan baru ke Hive + jadwalkan notifikasi
-  Future<void> _saveFoodItem() async {
+  Future<void> _saveFoodItem(String lang) async {
     if (_nameController.text.trim().isEmpty) return;
 
     final daysLeft = int.tryParse(_daysController.text) ?? 3;
@@ -65,7 +55,7 @@ class _ExpiryTrackerScreenState extends State<ExpiryTrackerScreen> {
       emoji: _selectedEmoji,
       name: _nameController.text.trim(),
       category: _categoryController.text.trim().isEmpty
-          ? 'Umum'
+          ? (lang == 'ar' ? 'عام' : (lang == 'en' ? 'General' : 'Umum'))
           : _categoryController.text.trim(),
       daysLeft: daysLeft,
       weight: weight,
@@ -77,7 +67,7 @@ class _ExpiryTrackerScreenState extends State<ExpiryTrackerScreen> {
     // Jadwalkan notifikasi pengingat 2 hari sebelum kedaluwarsa
     final expiryDate = DateTime.now().add(Duration(days: daysLeft));
     await NotificationService().scheduleExpiryNotification(
-      id: int.parse(id) % 100000, // ID numerik untuk notifikasi
+      id: int.parse(id) % 100000,
       itemName: item.name,
       expiryDate: expiryDate,
       daysBeforeExpiry: daysLeft > 2 ? 2 : 1,
@@ -88,39 +78,40 @@ class _ExpiryTrackerScreenState extends State<ExpiryTrackerScreen> {
     _daysController.clear();
     _weightController.clear();
     _priceController.clear();
-    _selectedEmoji = '🥦';
-
-    _loadItems();
+    setState(() => _selectedEmoji = '🥦');
 
     if (mounted) {
       Navigator.pop(context);
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('✅ ${item.name} berhasil ditambahkan!'),
+          content: Text(LocalizationService.get(lang, 'added_success', args: {'name': item.name})),
           backgroundColor: Colors.green,
+          behavior: SnackBarBehavior.floating,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
         ),
       );
     }
   }
 
-  /// حذف بند من Hive
-  Future<void> _deleteItem(FoodItem item) async {
+  /// حذف عنصر من Hive
+  Future<void> _deleteItem(FoodItem item, String lang) async {
     await HiveDbHelper.deleteFoodItem(item.id);
     await NotificationService().cancelNotification(
       int.parse(item.id) % 100000,
     );
-    _loadItems();
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('🗑️ ${item.name} dihapus'),
+          content: Text(LocalizationService.get(lang, 'deleted_msg', args: {'name': item.name})),
           backgroundColor: Colors.red.shade600,
+          behavior: SnackBarBehavior.floating,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
         ),
       );
     }
   }
 
-  Future<void> _consumeItem(FoodItem item) async {
+  Future<void> _consumeItem(FoodItem item, String lang) async {
     final event = HistoryEvent(
       id: DateTime.now().millisecondsSinceEpoch.toString(),
       name: item.name,
@@ -135,11 +126,13 @@ class _ExpiryTrackerScreenState extends State<ExpiryTrackerScreen> {
     await NotificationService().cancelNotification(
       int.parse(item.id) % 100000,
     );
-    _loadItems();
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('🍳 ${item.name} dikonsumsi & diselamatkan!'),
+          content: Text(LocalizationService.get(lang, 'cooking_done_snack', args: {
+            'count': '1',
+            'money': item.price.toString()
+          })),
           backgroundColor: Colors.green,
           behavior: SnackBarBehavior.floating,
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
@@ -148,7 +141,7 @@ class _ExpiryTrackerScreenState extends State<ExpiryTrackerScreen> {
     }
   }
 
-  Future<void> _wasteItem(FoodItem item) async {
+  Future<void> _wasteItem(FoodItem item, String lang) async {
     final event = HistoryEvent(
       id: DateTime.now().millisecondsSinceEpoch.toString(),
       name: item.name,
@@ -163,11 +156,10 @@ class _ExpiryTrackerScreenState extends State<ExpiryTrackerScreen> {
     await NotificationService().cancelNotification(
       int.parse(item.id) % 100000,
     );
-    _loadItems();
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('🗑️ ${item.name} terbuang'),
+          content: Text(LocalizationService.get(lang, 'deleted_msg', args: {'name': item.name})),
           backgroundColor: Colors.orange.shade800,
           behavior: SnackBarBehavior.floating,
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
@@ -176,7 +168,7 @@ class _ExpiryTrackerScreenState extends State<ExpiryTrackerScreen> {
     }
   }
 
-  void _showItemActionSheet(FoodItem item) {
+  void _showItemActionSheet(FoodItem item, String lang) {
     showModalBottomSheet(
       context: context,
       backgroundColor: Colors.transparent,
@@ -215,7 +207,10 @@ class _ExpiryTrackerScreenState extends State<ExpiryTrackerScreen> {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(item.name, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-                      Text('${item.category} • ${item.daysLeft} hari lagi', style: TextStyle(color: Colors.grey.shade500, fontSize: 13)),
+                      Text(
+                        '${item.category} • ${LocalizationService.get(lang, 'days_left', args: {'count': item.daysLeft.toString()})}',
+                        style: TextStyle(color: Colors.grey.shade500, fontSize: 13),
+                      ),
                     ],
                   ),
                 ),
@@ -225,10 +220,15 @@ class _ExpiryTrackerScreenState extends State<ExpiryTrackerScreen> {
             ElevatedButton.icon(
               onPressed: () async {
                 Navigator.pop(ctx);
-                await _consumeItem(item);
+                await _consumeItem(item, lang);
               },
               icon: const Icon(LucideIcons.chefHat, color: Colors.white),
-              label: const Text('Sudah Dikonsumsi / Dimasak 🍳', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+              label: Text(
+                lang == 'ar'
+                    ? 'تم الاستهلاك / الطبخ 🍳'
+                    : (lang == 'en' ? 'Consumed / Cooked 🍳' : 'Sudah Dikonsumsi / Dimasak 🍳'),
+                style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+              ),
               style: ElevatedButton.styleFrom(
                 backgroundColor: Colors.green.shade600,
                 padding: const EdgeInsets.symmetric(vertical: 14),
@@ -239,10 +239,15 @@ class _ExpiryTrackerScreenState extends State<ExpiryTrackerScreen> {
             OutlinedButton.icon(
               onPressed: () async {
                 Navigator.pop(ctx);
-                await _wasteItem(item);
+                await _wasteItem(item, lang);
               },
               icon: const Icon(LucideIcons.trash2, color: Colors.red),
-              label: const Text('Terbuang / Rusak 🗑️', style: TextStyle(color: Colors.red)),
+              label: Text(
+                lang == 'ar'
+                    ? 'مهدور / تالف 🗑️'
+                    : (lang == 'en' ? 'Wasted / Spoiled 🗑️' : 'Terbuang / Rusak 🗑️'),
+                style: const TextStyle(color: Colors.red),
+              ),
               style: OutlinedButton.styleFrom(
                 side: BorderSide(color: Colors.red.shade300),
                 padding: const EdgeInsets.symmetric(vertical: 14),
@@ -256,10 +261,14 @@ class _ExpiryTrackerScreenState extends State<ExpiryTrackerScreen> {
                   child: OutlinedButton.icon(
                     onPressed: () {
                       Navigator.pop(ctx);
-                      _showEditItemSheet(item);
+                      _showEditItemSheet(item, lang);
                     },
                     icon: const Icon(LucideIcons.pencil),
-                    label: const Text('Edit Detail'),
+                    label: Text(
+                      lang == 'ar'
+                          ? 'تعديل التفاصيل'
+                          : (lang == 'en' ? 'Edit Details' : 'Edit Detail'),
+                    ),
                     style: OutlinedButton.styleFrom(
                       padding: const EdgeInsets.symmetric(vertical: 12),
                       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
@@ -274,23 +283,32 @@ class _ExpiryTrackerScreenState extends State<ExpiryTrackerScreen> {
                       final confirm = await showDialog<bool>(
                         context: context,
                         builder: (alertCtx) => AlertDialog(
-                          title: const Text('Hapus Bahan?'),
-                          content: Text('Yakin ingin menghapus ${item.name} tanpa riwayat?'),
+                          title: Text(LocalizationService.get(lang, 'confirm_delete_title')),
+                          content: Text(LocalizationService.get(lang, 'confirm_delete_desc_no_history', args: {'name': item.name})),
                           actions: [
-                            TextButton(onPressed: () => Navigator.pop(alertCtx, false), child: const Text('Batal')),
+                            TextButton(
+                              onPressed: () => Navigator.pop(alertCtx, false),
+                              child: Text(LocalizationService.get(lang, 'cancel')),
+                            ),
                             TextButton(
                               onPressed: () => Navigator.pop(alertCtx, true),
-                              child: const Text('Hapus', style: TextStyle(color: Colors.red)),
+                              child: Text(
+                                lang == 'ar' ? 'حذف' : (lang == 'en' ? 'Delete' : 'Hapus'),
+                                style: const TextStyle(color: Colors.red),
+                              ),
                             ),
                           ],
                         ),
                       );
                       if (confirm == true) {
-                        await _deleteItem(item);
+                        await _deleteItem(item, lang);
                       }
                     },
                     icon: const Icon(LucideIcons.x, color: Colors.grey),
-                    label: const Text('Hapus', style: TextStyle(color: Colors.grey)),
+                    label: Text(
+                      lang == 'ar' ? 'حذف' : (lang == 'en' ? 'Delete' : 'Hapus'),
+                      style: const TextStyle(color: Colors.grey),
+                    ),
                     style: OutlinedButton.styleFrom(
                       side: BorderSide(color: Colors.grey.shade300),
                       padding: const EdgeInsets.symmetric(vertical: 12),
@@ -308,7 +326,7 @@ class _ExpiryTrackerScreenState extends State<ExpiryTrackerScreen> {
   }
 
   /// فتح نافذة التعديل
-  void _showEditItemSheet(FoodItem item) {
+  void _showEditItemSheet(FoodItem item, String lang) {
     final nameCtrl = TextEditingController(text: item.name);
     final categoryCtrl = TextEditingController(text: item.category);
     final daysCtrl = TextEditingController(text: item.daysLeft.toString());
@@ -344,12 +362,15 @@ class _ExpiryTrackerScreenState extends State<ExpiryTrackerScreen> {
                   ),
                 ),
                 const SizedBox(height: 20),
-                const Text(
-                  '✏️ Edit Bahan Makanan',
-                  style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+                Text(
+                  LocalizationService.get(lang, 'edit_food_title'),
+                  style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
                 ),
                 const SizedBox(height: 20),
-                const Text('Pilih Ikon:', style: TextStyle(fontWeight: FontWeight.w600)),
+                Text(
+                  LocalizationService.get(lang, 'choose_icon'),
+                  style: const TextStyle(fontWeight: FontWeight.w600),
+                ),
                 const SizedBox(height: 8),
                 SizedBox(
                   height: 52,
@@ -381,29 +402,29 @@ class _ExpiryTrackerScreenState extends State<ExpiryTrackerScreen> {
                 const SizedBox(height: 16),
                 TextField(
                   controller: nameCtrl,
-                  decoration: const InputDecoration(
-                    labelText: 'Nama Bahan *',
-                    prefixIcon: Icon(LucideIcons.utensils),
-                    border: OutlineInputBorder(),
+                  decoration: InputDecoration(
+                    labelText: LocalizationService.get(lang, 'food_name_label'),
+                    prefixIcon: const Icon(LucideIcons.utensils),
+                    border: const OutlineInputBorder(),
                   ),
                 ),
                 const SizedBox(height: 12),
                 TextField(
                   controller: categoryCtrl,
-                  decoration: const InputDecoration(
-                    labelText: 'Kategori',
-                    prefixIcon: Icon(LucideIcons.folder),
-                    border: OutlineInputBorder(),
+                  decoration: InputDecoration(
+                    labelText: LocalizationService.get(lang, 'category_label'),
+                    prefixIcon: const Icon(LucideIcons.folder),
+                    border: const OutlineInputBorder(),
                   ),
                 ),
                 const SizedBox(height: 12),
                 TextField(
                   controller: daysCtrl,
                   keyboardType: TextInputType.number,
-                  decoration: const InputDecoration(
-                    labelText: 'Hari Sebelum Kedaluwarsa *',
-                    prefixIcon: Icon(LucideIcons.calendar),
-                    border: OutlineInputBorder(),
+                  decoration: InputDecoration(
+                    labelText: LocalizationService.get(lang, 'days_before_expiry'),
+                    prefixIcon: const Icon(LucideIcons.calendar),
+                    border: const OutlineInputBorder(),
                   ),
                 ),
                 const SizedBox(height: 12),
@@ -413,10 +434,10 @@ class _ExpiryTrackerScreenState extends State<ExpiryTrackerScreen> {
                       child: TextField(
                         controller: weightCtrl,
                         keyboardType: TextInputType.number,
-                        decoration: const InputDecoration(
-                          labelText: 'Berat (kg)',
-                          prefixIcon: Icon(LucideIcons.scale),
-                          border: OutlineInputBorder(),
+                        decoration: InputDecoration(
+                          labelText: LocalizationService.get(lang, 'weight_label'),
+                          prefixIcon: const Icon(LucideIcons.scale),
+                          border: const OutlineInputBorder(),
                         ),
                       ),
                     ),
@@ -425,10 +446,10 @@ class _ExpiryTrackerScreenState extends State<ExpiryTrackerScreen> {
                       child: TextField(
                         controller: priceCtrl,
                         keyboardType: TextInputType.number,
-                        decoration: const InputDecoration(
-                          labelText: 'Harga (Rp)',
-                          prefixIcon: Icon(LucideIcons.wallet),
-                          border: OutlineInputBorder(),
+                        decoration: InputDecoration(
+                          labelText: LocalizationService.get(lang, 'price_label'),
+                          prefixIcon: const Icon(LucideIcons.wallet),
+                          border: const OutlineInputBorder(),
                         ),
                       ),
                     ),
@@ -451,7 +472,6 @@ class _ExpiryTrackerScreenState extends State<ExpiryTrackerScreen> {
                       price: int.tryParse(priceCtrl.text) ?? item.price,
                     );
                     await HiveDbHelper.saveFoodItem(updatedItem);
-                    // أعد جدولة الإشعار
                     await NotificationService().cancelNotification(int.parse(item.id) % 100000);
                     final newDays = updatedItem.daysLeft;
                     final expiryDate = DateTime.now().add(Duration(days: newDays));
@@ -461,20 +481,20 @@ class _ExpiryTrackerScreenState extends State<ExpiryTrackerScreen> {
                       expiryDate: expiryDate,
                       daysBeforeExpiry: newDays > 2 ? 2 : 1,
                     );
-                    _loadItems();
-                    
                     nav.pop();
                     messenger.showSnackBar(
                       SnackBar(
-                        content: Text('✅ ${updatedItem.name} berhasil diperbarui!'),
+                        content: Text(LocalizationService.get(lang, 'updated_success', args: {'name': updatedItem.name})),
                         backgroundColor: Colors.green,
+                        behavior: SnackBarBehavior.floating,
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                       ),
                     );
                   },
                   icon: const Icon(LucideIcons.save, color: Colors.white),
-                  label: const Text(
-                    'Simpan Perubahan',
-                    style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16),
+                  label: Text(
+                    LocalizationService.get(lang, 'save_changes_btn'),
+                    style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16),
                   ),
                   style: ElevatedButton.styleFrom(
                     backgroundColor: Colors.green,
@@ -486,10 +506,13 @@ class _ExpiryTrackerScreenState extends State<ExpiryTrackerScreen> {
                 OutlinedButton.icon(
                   onPressed: () async {
                     Navigator.pop(ctx);
-                    await _deleteItem(item);
+                    await _deleteItem(item, lang);
                   },
                   icon: const Icon(LucideIcons.trash2, color: Colors.red),
-                  label: const Text('Hapus Bahan', style: TextStyle(color: Colors.red)),
+                  label: Text(
+                    LocalizationService.get(lang, 'delete_btn'),
+                    style: const TextStyle(color: Colors.red),
+                  ),
                   style: OutlinedButton.styleFrom(
                     side: const BorderSide(color: Colors.red),
                     padding: const EdgeInsets.symmetric(vertical: 14),
@@ -505,33 +528,19 @@ class _ExpiryTrackerScreenState extends State<ExpiryTrackerScreen> {
     );
   }
 
-  /// Filter items berdasarkan status kedaluwarsa
-  List<FoodItem> get _filteredItems {
-    switch (_activeFilter) {
-      case 'kritis':
-        return _items.where((i) => i.daysLeft <= 1).toList();
-      case 'mendekati':
-        return _items.where((i) => i.daysLeft > 1 && i.daysLeft <= 3).toList();
-      case 'aman':
-        return _items.where((i) => i.daysLeft > 3).toList();
-      default:
-        return _items;
-    }
-  }
-
   Color _statusColor(int daysLeft) {
     if (daysLeft <= 1) return Colors.red;
     if (daysLeft <= 3) return Colors.amber;
     return Colors.green;
   }
 
-  String _statusLabel(int daysLeft) {
-    if (daysLeft <= 1) return 'Kritis!';
-    if (daysLeft <= 3) return 'Segera';
-    return 'Aman';
+  String _statusLabel(int daysLeft, String lang) {
+    if (daysLeft <= 1) return lang == 'ar' ? 'حرجة!' : (lang == 'en' ? 'Critical!' : 'Kritis!');
+    if (daysLeft <= 3) return lang == 'ar' ? 'قريباً' : (lang == 'en' ? 'Soon' : 'Segera');
+    return lang == 'ar' ? 'آمنة' : (lang == 'en' ? 'Safe' : 'Aman');
   }
 
-  void _showAddItemSheet() {
+  void _showAddItemSheet(String lang) {
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
@@ -560,14 +569,17 @@ class _ExpiryTrackerScreenState extends State<ExpiryTrackerScreen> {
                   ),
                 ),
                 const SizedBox(height: 20),
-                const Text(
-                  '➕ Tambah Bahan Makanan',
-                  style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+                Text(
+                  LocalizationService.get(lang, 'add_food_title'),
+                  style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
                 ),
                 const SizedBox(height: 20),
 
                 // Pilih emoji
-                const Text('Pilih Ikon:', style: TextStyle(fontWeight: FontWeight.w600)),
+                Text(
+                  LocalizationService.get(lang, 'choose_icon'),
+                  style: const TextStyle(fontWeight: FontWeight.w600),
+                ),
                 const SizedBox(height: 8),
                 SizedBox(
                   height: 52,
@@ -603,30 +615,29 @@ class _ExpiryTrackerScreenState extends State<ExpiryTrackerScreen> {
                 // Form fields
                 TextField(
                   controller: _nameController,
-                  decoration: const InputDecoration(
-                    labelText: 'Nama Bahan *',
-                    prefixIcon: Icon(LucideIcons.utensils),
-                    border: OutlineInputBorder(),
+                  decoration: InputDecoration(
+                    labelText: LocalizationService.get(lang, 'food_name_label'),
+                    prefixIcon: const Icon(LucideIcons.utensils),
+                    border: const OutlineInputBorder(),
                   ),
                 ),
                 const SizedBox(height: 12),
                 TextField(
                   controller: _categoryController,
-                  decoration: const InputDecoration(
-                    labelText: 'Kategori (misal: Sayuran)',
-                    prefixIcon: Icon(LucideIcons.folder),
-                    border: OutlineInputBorder(),
+                  decoration: InputDecoration(
+                    labelText: LocalizationService.get(lang, 'category_label'),
+                    prefixIcon: const Icon(LucideIcons.folder),
+                    border: const OutlineInputBorder(),
                   ),
                 ),
                 const SizedBox(height: 12),
                 TextField(
                   controller: _daysController,
                   keyboardType: TextInputType.number,
-                  decoration: const InputDecoration(
-                    labelText: 'Hari Sebelum Kedaluwarsa *',
-                    prefixIcon: Icon(LucideIcons.calendar),
-                    border: OutlineInputBorder(),
-                    hintText: 'misal: 5',
+                  decoration: InputDecoration(
+                    labelText: LocalizationService.get(lang, 'days_before_expiry'),
+                    prefixIcon: const Icon(LucideIcons.calendar),
+                    border: const OutlineInputBorder(),
                   ),
                 ),
                 const SizedBox(height: 12),
@@ -636,10 +647,10 @@ class _ExpiryTrackerScreenState extends State<ExpiryTrackerScreen> {
                       child: TextField(
                         controller: _weightController,
                         keyboardType: TextInputType.number,
-                        decoration: const InputDecoration(
-                          labelText: 'Berat (kg)',
-                          prefixIcon: Icon(LucideIcons.scale),
-                          border: OutlineInputBorder(),
+                        decoration: InputDecoration(
+                          labelText: LocalizationService.get(lang, 'weight_label'),
+                          prefixIcon: const Icon(LucideIcons.scale),
+                          border: const OutlineInputBorder(),
                         ),
                       ),
                     ),
@@ -648,10 +659,10 @@ class _ExpiryTrackerScreenState extends State<ExpiryTrackerScreen> {
                       child: TextField(
                         controller: _priceController,
                         keyboardType: TextInputType.number,
-                        decoration: const InputDecoration(
-                          labelText: 'Harga (Rp)',
-                          prefixIcon: Icon(LucideIcons.wallet),
-                          border: OutlineInputBorder(),
+                        decoration: InputDecoration(
+                          labelText: LocalizationService.get(lang, 'price_label'),
+                          prefixIcon: const Icon(LucideIcons.wallet),
+                          border: const OutlineInputBorder(),
                         ),
                       ),
                     ),
@@ -659,11 +670,11 @@ class _ExpiryTrackerScreenState extends State<ExpiryTrackerScreen> {
                 ),
                 const SizedBox(height: 24),
                 ElevatedButton.icon(
-                  onPressed: _saveFoodItem,
+                  onPressed: () => _saveFoodItem(lang),
                   icon: const Icon(LucideIcons.save, color: Colors.white),
-                  label: const Text(
-                    'Simpan Bahan',
-                    style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16),
+                  label: Text(
+                    LocalizationService.get(lang, 'save_btn'),
+                    style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16),
                   ),
                   style: ElevatedButton.styleFrom(
                     backgroundColor: Colors.green,
@@ -682,89 +693,124 @@ class _ExpiryTrackerScreenState extends State<ExpiryTrackerScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final criticalCount = _items.where((i) => i.daysLeft <= 1).length;
-    final approachingCount = _items.where((i) => i.daysLeft > 1 && i.daysLeft <= 3).length;
-    final filtered = _filteredItems;
+    final settingsProvider = Provider.of<AppSettingsProvider>(context);
+    final lang = settingsProvider.currentLanguage;
 
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('🥦 Expiry Tracker', style: TextStyle(fontWeight: FontWeight.bold)),
-        backgroundColor: Colors.green,
-        foregroundColor: Colors.white,
-        actions: [
-          IconButton(
-            icon: const Icon(LucideIcons.refreshCw),
-            onPressed: _loadItems,
-            tooltip: 'Refresh',
-          ),
-        ],
-      ),
-      body: Column(
-        children: [
-          // Banner kritis
-          if (criticalCount > 0)
-            Container(
-              margin: const EdgeInsets.all(12),
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: Colors.red.shade600,
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: Row(
-                children: [
-                  const Icon(LucideIcons.alertTriangle, color: Colors.white),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          '⚠️ $criticalCount bahan kritis!',
-                          style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
-                        ),
-                        const Text(
-                          'Segera masak untuk kurangi food waste.',
-                          style: TextStyle(color: Color(0xBFFFFFFF), fontSize: 12),
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
+    return ValueListenableBuilder(
+      valueListenable: HiveDbHelper.foodBoxListenable,
+      builder: (context, Box box, _) {
+        final items = HiveDbHelper.getFoodItems();
+        items.sort((a, b) => a.daysLeft.compareTo(b.daysLeft));
+
+        final criticalCount = items.where((i) => i.daysLeft <= 1).length;
+        final approachingCount =
+            items.where((i) => i.daysLeft > 1 && i.daysLeft <= 3).length;
+
+        // Apply active filter
+        List<FoodItem> filtered;
+        switch (_activeFilter) {
+          case 'kritis':
+            filtered = items.where((i) => i.daysLeft <= 1).toList();
+            break;
+          case 'mendekati':
+            filtered =
+                items.where((i) => i.daysLeft > 1 && i.daysLeft <= 3).toList();
+            break;
+          case 'aman':
+            filtered = items.where((i) => i.daysLeft > 3).toList();
+            break;
+          default:
+            filtered = items;
+        }
+
+        return Scaffold(
+          appBar: AppBar(
+            title: Text(
+              LocalizationService.get(lang, 'tracker_title'),
+              style: const TextStyle(fontWeight: FontWeight.bold),
             ),
+            backgroundColor: Colors.green,
+            foregroundColor: Colors.white,
+          ),
+          body: Column(
+            children: [
+              // Banner kritis
+              if (criticalCount > 0)
+                Container(
+                  margin: const EdgeInsets.all(12),
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: Colors.red.shade600,
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Row(
+                    children: [
+                      const Icon(LucideIcons.alertTriangle,
+                          color: Colors.white),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              LocalizationService.get(lang, 'critical_banner', args: {'count': criticalCount.toString()}),
+                              style: const TextStyle(
+                                  color: Colors.white,
+                                  fontWeight: FontWeight.bold),
+                            ),
+                            Text(
+                              LocalizationService.get(lang, 'critical_banner_desc'),
+                              style: const TextStyle(
+                                  color: Color(0xBFFFFFFF), fontSize: 12),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
 
-          // Filter chips
-          SingleChildScrollView(
-            scrollDirection: Axis.horizontal,
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-            child: Row(
-              children: [
-                _buildFilterChip('semua', 'Semua (${_items.length})', Colors.green),
-                _buildFilterChip('kritis', 'Kritis ⚠️ ($criticalCount)', Colors.red),
-                _buildFilterChip('mendekati', 'Segera 🟡 ($approachingCount)', Colors.amber),
-                _buildFilterChip('aman', 'Aman ✅', Colors.blue),
-              ],
+              // Filter chips
+              SingleChildScrollView(
+                scrollDirection: Axis.horizontal,
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                child: Row(
+                  children: [
+                    _buildFilterChip(
+                        'semua', LocalizationService.get(lang, 'filter_all', args: {'count': items.length.toString()}), Colors.green),
+                    _buildFilterChip(
+                        'kritis', LocalizationService.get(lang, 'filter_critical', args: {'count': criticalCount.toString()}), Colors.red),
+                    _buildFilterChip('mendekati',
+                        LocalizationService.get(lang, 'filter_soon', args: {'count': approachingCount.toString()}), Colors.amber),
+                    _buildFilterChip('aman', LocalizationService.get(lang, 'filter_safe'), Colors.blue),
+                  ],
+                ),
+              ),
+
+              // List bahan
+              Expanded(
+                child: filtered.isEmpty
+                    ? _buildEmptyState(lang)
+                    : ListView.builder(
+                        padding: const EdgeInsets.all(12),
+                        itemCount: filtered.length,
+                        itemBuilder: (_, i) => _buildFoodCard(filtered[i], lang),
+                      ),
+              ),
+            ],
+          ),
+          floatingActionButton: FloatingActionButton.extended(
+            onPressed: () => _showAddItemSheet(lang),
+            backgroundColor: Colors.green,
+            icon: const Icon(LucideIcons.plus, color: Colors.white),
+            label: Text(
+              LocalizationService.get(lang, 'add_ingredient'),
+              style: const TextStyle(color: Colors.white),
             ),
           ),
-
-          // List bahan
-          Expanded(
-            child: filtered.isEmpty
-                ? _buildEmptyState()
-                : ListView.builder(
-                    padding: const EdgeInsets.all(12),
-                    itemCount: filtered.length,
-                    itemBuilder: (_, i) => _buildFoodCard(filtered[i]),
-                  ),
-          ),
-        ],
-      ),
-      floatingActionButton: FloatingActionButton.extended(
-        onPressed: _showAddItemSheet,
-        backgroundColor: Colors.green,
-        icon: const Icon(LucideIcons.plus, color: Colors.white),
-        label: const Text('Tambah Bahan', style: TextStyle(color: Colors.white)),
-      ),
+        );
+      },
     );
   }
 
@@ -792,9 +838,9 @@ class _ExpiryTrackerScreenState extends State<ExpiryTrackerScreen> {
     );
   }
 
-  Widget _buildFoodCard(FoodItem item) {
+  Widget _buildFoodCard(FoodItem item, String lang) {
     final color = _statusColor(item.daysLeft);
-    final label = _statusLabel(item.daysLeft);
+    final label = _statusLabel(item.daysLeft, lang);
 
     return Dismissible(
       key: Key(item.id),
@@ -810,24 +856,31 @@ class _ExpiryTrackerScreenState extends State<ExpiryTrackerScreen> {
       ),
       confirmDismiss: (_) async {
         return await showDialog<bool>(
-          context: context,
-          builder: (ctx) => AlertDialog(
-            title: const Text('Hapus Bahan?'),
-            content: Text('Yakin ingin menghapus ${item.name}?'),
-            actions: [
-              TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Batal')),
-              TextButton(
-                onPressed: () => Navigator.pop(ctx, true),
-                child: const Text('Hapus', style: TextStyle(color: Colors.red)),
+              context: context,
+              builder: (ctx) => AlertDialog(
+                title: Text(LocalizationService.get(lang, 'confirm_delete_title')),
+                content: Text(LocalizationService.get(lang, 'confirm_delete_desc', args: {'name': item.name})),
+                actions: [
+                  TextButton(
+                    onPressed: () => Navigator.pop(ctx, false),
+                    child: Text(LocalizationService.get(lang, 'cancel')),
+                  ),
+                  TextButton(
+                    onPressed: () => Navigator.pop(ctx, true),
+                    child: Text(
+                      lang == 'ar' ? 'حذف' : (lang == 'en' ? 'Delete' : 'Hapus'),
+                      style: const TextStyle(color: Colors.red),
+                    ),
+                  ),
+                ],
               ),
-            ],
-          ),
-        ) ?? false;
+            ) ??
+            false;
       },
-      onDismissed: (_) => _deleteItem(item),
+      onDismissed: (_) => _deleteItem(item, lang),
       child: GestureDetector(
-        onTap: () => _showItemActionSheet(item),
-        onLongPress: () => _showEditItemSheet(item),
+        onTap: () => _showItemActionSheet(item, lang),
+        onLongPress: () => _showEditItemSheet(item, lang),
         child: Container(
           margin: const EdgeInsets.only(bottom: 10),
           padding: const EdgeInsets.all(14),
@@ -901,7 +954,7 @@ class _ExpiryTrackerScreenState extends State<ExpiryTrackerScreen> {
                   ),
                   const SizedBox(height: 4),
                   Text(
-                    '${item.daysLeft} hari lagi',
+                    LocalizationService.get(lang, 'days_left', args: {'count': item.daysLeft.toString()}),
                     style: TextStyle(
                       color: color,
                       fontWeight: FontWeight.bold,
@@ -910,7 +963,7 @@ class _ExpiryTrackerScreenState extends State<ExpiryTrackerScreen> {
                   ),
                   const SizedBox(height: 4),
                   GestureDetector(
-                    onTap: () => _showEditItemSheet(item),
+                    onTap: () => _showEditItemSheet(item, lang),
                     child: Icon(LucideIcons.pencil, size: 16, color: Colors.grey.shade400),
                   ),
                 ],
@@ -922,7 +975,7 @@ class _ExpiryTrackerScreenState extends State<ExpiryTrackerScreen> {
     );
   }
 
-  Widget _buildEmptyState() {
+  Widget _buildEmptyState(String lang) {
     return Center(
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
@@ -931,13 +984,13 @@ class _ExpiryTrackerScreenState extends State<ExpiryTrackerScreen> {
           const SizedBox(height: 16),
           Text(
             _activeFilter == 'semua'
-                ? 'Belum ada bahan makanan'
-                : 'Tidak ada bahan di kategori ini',
+                ? LocalizationService.get(lang, 'empty_tracker_title')
+                : LocalizationService.get(lang, 'empty_filter_title'),
             style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
           ),
           const SizedBox(height: 8),
           Text(
-            'Tekan tombol + untuk menambahkan\nbahan makanan pertama Anda 🌿',
+            LocalizationService.get(lang, 'empty_tracker_subtitle'),
             textAlign: TextAlign.center,
             style: TextStyle(color: Colors.grey.shade500),
           ),

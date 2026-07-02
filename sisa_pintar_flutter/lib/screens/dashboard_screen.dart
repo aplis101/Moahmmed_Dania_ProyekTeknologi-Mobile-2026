@@ -1,8 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:lucide_icons/lucide_icons.dart';
 import 'package:fl_chart/fl_chart.dart';
+import 'package:provider/provider.dart';
 import '../database/hive_db_helper.dart';
 import '../models/history_event.dart';
+import '../services/localization_service.dart';
+import '../main.dart';
 
 class DashboardScreen extends StatefulWidget {
   final VoidCallback onToggleDarkMode;
@@ -20,12 +23,19 @@ class DashboardScreen extends StatefulWidget {
 
 class _DashboardScreenState extends State<DashboardScreen> {
   int _activePeriodIndex = 0;
-  final List<String> _periods = ["Minggu Ini", "Bulan Ini", "Semua Waktu"];
 
   @override
   Widget build(BuildContext context) {
+    final settingsProvider = Provider.of<AppSettingsProvider>(context);
+    final lang = settingsProvider.currentLanguage;
+
+    final periods = [
+      LocalizationService.get(lang, 'period_week'),
+      LocalizationService.get(lang, 'period_month'),
+      LocalizationService.get(lang, 'period_all'),
+    ];
+
     final List<HistoryEvent> history = HiveDbHelper.getHistoryEvents();
-    // Calculations
     final consumedItems = history.where((h) => h.action == 'consumed').toList();
     final wastedItems = history.where((h) => h.action == 'wasted').toList();
 
@@ -41,9 +51,18 @@ class _DashboardScreenState extends State<DashboardScreen> {
         : 100;
     final double wastedPercent = 100 - savedPercent;
 
+    final kgLeft = (15 - totalSavedWeight).isNegative ? '0.0' : (15 - totalSavedWeight).toStringAsFixed(1);
+    final nextLevelText = LocalizationService.get(lang, 'next_level', args: {'kg': kgLeft});
+
+    final days = lang == 'ar'
+        ? ['ن', 'ث', 'ر', 'خ', 'ج', 'س', 'ح']
+        : (lang == 'en'
+            ? ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
+            : ['Sen', 'Sel', 'Rab', 'Kam', 'Jum', 'Sab', 'Min']);
+
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Eco-Impact Dashboard', style: TextStyle(fontWeight: FontWeight.bold)),
+        title: Text(LocalizationService.get(lang, 'dashboard_title'), style: const TextStyle(fontWeight: FontWeight.bold)),
         actions: [
           IconButton(
             icon: Icon(widget.isDarkMode ? LucideIcons.sun : LucideIcons.moon),
@@ -64,7 +83,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
             children: [
               // Period Selector
               Row(
-                children: _periods.asMap().entries.map((entry) {
+                children: periods.asMap().entries.map((entry) {
                   final idx = entry.key;
                   final label = entry.value;
                   final isActive = _activePeriodIndex == idx;
@@ -107,10 +126,13 @@ class _DashboardScreenState extends State<DashboardScreen> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Row(
-                      children: const [
-                        Text('🏆', style: TextStyle(fontSize: 16)),
-                        SizedBox(width: 6),
-                        Text('Level: Eco Warrior 🌿', style: TextStyle(color: Color(0xFFE8F5E9), fontSize: 13, fontWeight: FontWeight.bold)),
+                      children: [
+                        const Text('🏆', style: TextStyle(fontSize: 16)),
+                        const SizedBox(width: 6),
+                        Text(
+                          LocalizationService.get(lang, 'eco_level'),
+                          style: const TextStyle(color: Color(0xFFE8F5E9), fontSize: 13, fontWeight: FontWeight.bold),
+                        ),
                       ],
                     ),
                     const SizedBox(height: 12),
@@ -118,7 +140,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
                       '${totalSavedWeight.toStringAsFixed(1)} kg',
                       style: const TextStyle(fontSize: 42, fontWeight: FontWeight.bold, color: Colors.white, height: 1.0),
                     ),
-                    const Text('makanan berhasil diselamatkan', style: TextStyle(color: Colors.white70, fontSize: 13)),
+                    Text(
+                      LocalizationService.get(lang, 'saved_desc'),
+                      style: const TextStyle(color: Colors.white70, fontSize: 13),
+                    ),
                     const SizedBox(height: 16),
                     // Progress bar
                     ClipRRect(
@@ -131,7 +156,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                       ),
                     ),
                     const SizedBox(height: 4),
-                    const Text('Level selanjutnya: 15 kg (Kurang 2.4 kg)', style: TextStyle(color: Colors.white60, fontSize: 10)),
+                    Text(nextLevelText, style: const TextStyle(color: Colors.white60, fontSize: 10)),
                     const Padding(
                       padding: EdgeInsets.symmetric(vertical: 12.0),
                       child: Divider(color: Colors.white24, height: 1),
@@ -143,7 +168,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
                               Text('Rp ${totalSavedMoney.toString()}', style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 14)),
-                              const Text('Total dihemat', style: TextStyle(color: Colors.white60, fontSize: 10)),
+                              Text(LocalizationService.get(lang, 'total_saved_money'), style: const TextStyle(color: Colors.white60, fontSize: 10)),
                             ],
                           ),
                         ),
@@ -152,7 +177,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
                               Text('$recipesCookedCount Resep', style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 14)),
-                              const Text('Berhasil dimasak', style: TextStyle(color: Colors.white60, fontSize: 10)),
+                              Text(LocalizationService.get(lang, 'cooked_count'), style: const TextStyle(color: Colors.white60, fontSize: 10)),
                             ],
                           ),
                         ),
@@ -171,7 +196,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      const Text('Komposisi Pengelolaan Bahan (%)', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
+                      Text(LocalizationService.get(lang, 'composition_title'), style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
                       const SizedBox(height: 16),
                       Row(
                         children: [
@@ -203,9 +228,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
                           Expanded(
                             child: Column(
                               children: [
-                                _buildLegendItem('Diselamatkan', savedPercent, Colors.green),
+                                _buildLegendItem(LocalizationService.get(lang, 'saved'), savedPercent, Colors.green),
                                 const SizedBox(height: 8),
-                                _buildLegendItem('Terbuang', wastedPercent, Colors.red),
+                                _buildLegendItem(LocalizationService.get(lang, 'wasted'), wastedPercent, Colors.red),
                               ],
                             ),
                           )
@@ -225,7 +250,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      const Text('Progress Penyelamatan Mingguan', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
+                      Text(LocalizationService.get(lang, 'weekly_progress'), style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
                       const SizedBox(height: 20),
                       SizedBox(
                         height: 110,
@@ -240,7 +265,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
                                 sideTitles: SideTitles(
                                   showTitles: true,
                                   getTitlesWidget: (value, meta) {
-                                    final days = ['Sen', 'Sel', 'Rab', 'Kam', 'Jum', 'Sab', 'Min'];
                                     if (value.toInt() >= 0 && value.toInt() < days.length) {
                                       return Padding(
                                         padding: const EdgeInsets.only(top: 6.0),
@@ -272,16 +296,16 @@ class _DashboardScreenState extends State<DashboardScreen> {
               const SizedBox(height: 16),
 
               // Badges Section
-              const Text('Pencapaianmu 🏅', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
+              Text(LocalizationService.get(lang, 'achievements'), style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
               const SizedBox(height: 12),
               SizedBox(
                 height: 130,
                 child: ListView(
                   scrollDirection: Axis.horizontal,
                   children: [
-                    _buildBadgeCard('🌱', 'First Save', 'Pertama kali menyelamatkan bahan', Colors.amber.shade50),
-                    _buildBadgeCard('🍳', 'Chef Hemat', 'Masak 5+ resep dari sisa', Colors.purple.shade50),
-                    _buildBadgeCard('🏆', 'Zero Waste Hero', 'Selamatkan 10kg bahan', Colors.green.shade50),
+                    _buildBadgeCard('🌱', LocalizationService.get(lang, 'badge_first_save_title'), LocalizationService.get(lang, 'badge_first_save_desc'), Colors.amber.shade50),
+                    _buildBadgeCard('🍳', LocalizationService.get(lang, 'badge_chef_title'), LocalizationService.get(lang, 'badge_chef_desc'), Colors.purple.shade50),
+                    _buildBadgeCard('🏆', LocalizationService.get(lang, 'badge_zero_waste_title'), LocalizationService.get(lang, 'badge_zero_waste_desc'), Colors.green.shade50),
                   ],
                 ),
               )

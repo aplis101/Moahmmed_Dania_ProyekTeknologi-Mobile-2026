@@ -1,11 +1,14 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:lucide_icons/lucide_icons.dart';
+import 'package:provider/provider.dart';
 import '../database/hive_db_helper.dart';
 import '../models/food_item.dart';
 import '../models/history_event.dart';
 import '../services/groq_api_service.dart';
 import '../services/notification_service.dart';
+import '../services/localization_service.dart';
+import '../main.dart';
 
 class RecipeScreen extends StatefulWidget {
   final VoidCallback onToggleDarkMode;
@@ -29,6 +32,10 @@ class _RecipeScreenState extends State<RecipeScreen>
 
   bool _isLoading = false;
   String _generatedRecipe = '';
+
+  // Saved recipes: list of {title, content}
+  final List<Map<String, String>> _savedRecipes = [];
+  bool _justSaved = false;
 
   late AnimationController _loadingController;
   late AnimationController _pulseController;
@@ -64,7 +71,7 @@ class _RecipeScreenState extends State<RecipeScreen>
     });
   }
 
-  void _selectAllExpiring(List<FoodItem> items) {
+  void _selectAllExpiring(List<FoodItem> items, String lang) {
     final expiringNames = items
         .where((i) => i.daysLeft <= 3)
         .map((i) => i.name)
@@ -79,7 +86,7 @@ class _RecipeScreenState extends State<RecipeScreen>
     HapticFeedback.lightImpact();
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        content: Text('✅ ${expiringNames.length} bahan kritis dipilih!'),
+        content: Text(LocalizationService.get(lang, 'choose_critical', args: {'count': expiringNames.length.toString()})),
         backgroundColor: Colors.orange.shade700,
         behavior: SnackBarBehavior.floating,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
@@ -103,12 +110,12 @@ class _RecipeScreenState extends State<RecipeScreen>
     setState(() => _customIngredients.remove(name));
   }
 
-  Future<void> _fetchAiRecipe() async {
+  Future<void> _fetchAiRecipe(String lang) async {
     final allSelected = [..._selectedIngredients, ..._customIngredients];
     if (allSelected.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: const Text('Pilih minimal 1 bahan sisa kulkas Anda!'),
+          content: Text(LocalizationService.get(lang, 'select_at_least_one')),
           backgroundColor: Colors.red.shade600,
           behavior: SnackBarBehavior.floating,
           shape: RoundedRectangleBorder(
@@ -127,28 +134,63 @@ class _RecipeScreenState extends State<RecipeScreen>
 
     final recipe = await GroqApiService.generateRecipes(
       ingredients: allSelected,
+      language: lang == 'ar' ? 'Arabic' : (lang == 'en' ? 'English' : 'Indonesian'),
     );
 
     setState(() {
       _generatedRecipe = recipe;
       _isLoading = false;
+      _justSaved = false;
     });
 
     HapticFeedback.vibrate();
-    _showRecipeDetailsDrawer();
+    _showRecipeDetailsDrawer(lang);
+  }
+
+  /// Extract a short title from the recipe text (first meaningful line, max 28 chars)
+  String _extractTitle(String recipe) {
+    final lines = recipe.split('\n');
+    for (final line in lines) {
+      final cleaned = line
+          .replaceAll('**', '')
+          .replaceAll('*', '')
+          .replaceAll('#', '')
+          .replaceAll('🍳', '')
+          .replaceAll('🍽️', '')
+          .trim();
+      if (cleaned.isNotEmpty && cleaned.length > 3) {
+        return cleaned.length > 28 ? '${cleaned.substring(0, 28)}…' : cleaned;
+      }
+    }
+    return 'Recipe ${DateTime.now().hour}:${DateTime.now().minute.toString().padLeft(2, '0')}';
+  }
+
+  void _saveCurrentRecipe() {
+    if (_generatedRecipe.isEmpty) return;
+    final title = _extractTitle(_generatedRecipe);
+    setState(() {
+      _savedRecipes.insert(0, {
+        'title': title,
+        'content': _generatedRecipe,
+      });
+      _justSaved = true;
+    });
+    HapticFeedback.lightImpact();
   }
 
   @override
   Widget build(BuildContext context) {
+    final settingsProvider = Provider.of<AppSettingsProvider>(context);
+    final lang = settingsProvider.currentLanguage;
+
     final List<FoodItem> trackerItems = HiveDbHelper.getFoodItems();
-    // Sort: expiring first
     trackerItems.sort((a, b) => a.daysLeft.compareTo(b.daysLeft));
     final expiringCount = trackerItems.where((i) => i.daysLeft <= 3).length;
 
     return Scaffold(
       body: CustomScrollView(
         slivers: [
-          // Sliver App Bar with hero banner
+          // Sliver App Bar
           SliverAppBar(
             expandedHeight: 160,
             pinned: true,
@@ -168,9 +210,9 @@ class _RecipeScreenState extends State<RecipeScreen>
               const SizedBox(width: 8),
             ],
             flexibleSpace: FlexibleSpaceBar(
-              title: const Text(
-                'Smart Recipe AI ✦',
-                style: TextStyle(
+              title: Text(
+                LocalizationService.get(lang, 'recipe_ai_title'),
+                style: const TextStyle(
                   fontWeight: FontWeight.bold,
                   fontSize: 16,
                   color: Colors.white,
@@ -226,9 +268,9 @@ class _RecipeScreenState extends State<RecipeScreen>
                         ),
                       ),
                       const SizedBox(height: 6),
-                      const Text(
-                        'Pilih bahan, biarkan AI memasak untukmu!',
-                        style: TextStyle(color: Colors.white70, fontSize: 12),
+                      Text(
+                        LocalizationService.get(lang, 'recipe_ai_subtitle'),
+                        style: const TextStyle(color: Colors.white70, fontSize: 12),
                       ),
                     ],
                   ),
@@ -243,7 +285,7 @@ class _RecipeScreenState extends State<RecipeScreen>
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  // Ingredient picker card
+                  // ─── Ingredient picker card ───
                   Card(
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(16),
@@ -256,10 +298,10 @@ class _RecipeScreenState extends State<RecipeScreen>
                         children: [
                           Row(
                             children: [
-                              const Expanded(
+                              Expanded(
                                 child: Text(
-                                  '🥗 Pilih Bahan Kulkas:',
-                                  style: TextStyle(
+                                  LocalizationService.get(lang, 'choose_ingredients'),
+                                  style: const TextStyle(
                                     fontWeight: FontWeight.bold,
                                     fontSize: 14,
                                   ),
@@ -268,14 +310,14 @@ class _RecipeScreenState extends State<RecipeScreen>
                               if (expiringCount > 0)
                                 TextButton.icon(
                                   onPressed: () =>
-                                      _selectAllExpiring(trackerItems),
+                                      _selectAllExpiring(trackerItems, lang),
                                   icon: const Icon(
                                     LucideIcons.alertTriangle,
                                     size: 14,
                                     color: Colors.orange,
                                   ),
                                   label: Text(
-                                    'Pilih $expiringCount kritis',
+                                    LocalizationService.get(lang, 'choose_critical', args: {'count': expiringCount.toString()}),
                                     style: const TextStyle(
                                       fontSize: 11,
                                       color: Colors.orange,
@@ -298,7 +340,8 @@ class _RecipeScreenState extends State<RecipeScreen>
 
                           if (trackerItems.isEmpty)
                             Padding(
-                              padding: const EdgeInsets.symmetric(vertical: 16),
+                              padding:
+                                  const EdgeInsets.symmetric(vertical: 16),
                               child: Center(
                                 child: Column(
                                   children: [
@@ -308,7 +351,7 @@ class _RecipeScreenState extends State<RecipeScreen>
                                     ),
                                     const SizedBox(height: 8),
                                     Text(
-                                      'Belum ada bahan di tracker.\nTambah dulu di tab Tracker!',
+                                      LocalizationService.get(lang, 'no_ingredients_tracker'),
                                       textAlign: TextAlign.center,
                                       style: TextStyle(
                                         color: Colors.grey.shade500,
@@ -324,8 +367,8 @@ class _RecipeScreenState extends State<RecipeScreen>
                               spacing: 8,
                               runSpacing: 8,
                               children: trackerItems.map((item) {
-                                final isSelected = _selectedIngredients
-                                    .contains(item.name);
+                                final isSelected =
+                                    _selectedIngredients.contains(item.name);
                                 final isExpiring = item.daysLeft <= 3;
                                 return AnimatedContainer(
                                   duration: const Duration(milliseconds: 200),
@@ -343,8 +386,8 @@ class _RecipeScreenState extends State<RecipeScreen>
                                       color: isSelected
                                           ? Colors.green
                                           : (isExpiring
-                                                ? Colors.orange.shade300
-                                                : Colors.grey.shade300),
+                                              ? Colors.orange.shade300
+                                              : Colors.grey.shade300),
                                     ),
                                     labelStyle: TextStyle(
                                       color: isSelected
@@ -373,9 +416,9 @@ class _RecipeScreenState extends State<RecipeScreen>
                                     crossAxisAlignment:
                                         CrossAxisAlignment.start,
                                     children: [
-                                      const Text(
-                                        'Tambahan:',
-                                        style: TextStyle(
+                                      Text(
+                                        LocalizationService.get(lang, 'add_more'),
+                                        style: const TextStyle(
                                           fontSize: 12,
                                           color: Colors.grey,
                                         ),
@@ -394,8 +437,7 @@ class _RecipeScreenState extends State<RecipeScreen>
                                                 ),
                                                 onDeleted: () =>
                                                     _removeCustomIngredient(
-                                                      name,
-                                                    ),
+                                                        name),
                                                 backgroundColor:
                                                     Colors.green.shade50,
                                                 deleteIconColor:
@@ -417,22 +459,24 @@ class _RecipeScreenState extends State<RecipeScreen>
                                 child: TextField(
                                   controller: _customController,
                                   decoration: InputDecoration(
-                                    hintText: 'Tambahkan bahan lain...',
-                                    hintStyle: const TextStyle(fontSize: 13),
+                                    hintText: LocalizationService.get(lang, 'add_custom_hint'),
+                                    hintStyle:
+                                        const TextStyle(fontSize: 13),
                                     border: OutlineInputBorder(
-                                      borderRadius: BorderRadius.circular(12),
+                                      borderRadius:
+                                          BorderRadius.circular(12),
                                       borderSide: BorderSide(
                                         color: Colors.grey.shade300,
                                       ),
                                     ),
-                                    contentPadding: const EdgeInsets.symmetric(
+                                    contentPadding:
+                                        const EdgeInsets.symmetric(
                                       horizontal: 12,
                                       vertical: 10,
                                     ),
                                     filled: true,
-                                    fillColor: Theme.of(
-                                      context,
-                                    ).scaffoldBackgroundColor,
+                                    fillColor: Theme.of(context)
+                                        .scaffoldBackgroundColor,
                                   ),
                                   style: const TextStyle(fontSize: 13),
                                   onSubmitted: (_) => _addCustomIngredient(),
@@ -468,53 +512,55 @@ class _RecipeScreenState extends State<RecipeScreen>
                     duration: const Duration(milliseconds: 300),
                     child:
                         (_selectedIngredients.length +
-                                _customIngredients.length) >
-                            0
-                        ? Container(
-                            key: const ValueKey('count'),
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 14,
-                              vertical: 8,
-                            ),
-                            decoration: BoxDecoration(
-                              color: Colors.green.shade50,
-                              borderRadius: BorderRadius.circular(12),
-                              border: Border.all(color: Colors.green.shade200),
-                            ),
-                            child: Row(
-                              children: [
-                                Icon(
-                                  LucideIcons.checkCircle,
-                                  color: Colors.green.shade700,
-                                  size: 16,
+                                    _customIngredients.length) >
+                                0
+                            ? Container(
+                                key: const ValueKey('count'),
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 14,
+                                  vertical: 8,
                                 ),
-                                const SizedBox(width: 8),
-                                Text(
-                                  '${_selectedIngredients.length + _customIngredients.length} bahan dipilih',
-                                  style: TextStyle(
-                                    color: Colors.green.shade700,
-                                    fontWeight: FontWeight.w600,
-                                    fontSize: 13,
-                                  ),
+                                decoration: BoxDecoration(
+                                  color: Colors.green.shade50,
+                                  borderRadius: BorderRadius.circular(12),
+                                  border: Border.all(
+                                      color: Colors.green.shade200),
                                 ),
-                                const Spacer(),
-                                TextButton(
-                                  onPressed: () => setState(() {
-                                    _selectedIngredients.clear();
-                                    _customIngredients.clear();
-                                  }),
-                                  child: const Text(
-                                    'Hapus semua',
-                                    style: TextStyle(
-                                      fontSize: 11,
-                                      color: Colors.red,
+                                child: Row(
+                                  children: [
+                                    Icon(
+                                      LucideIcons.checkCircle,
+                                      color: Colors.green.shade700,
+                                      size: 16,
                                     ),
-                                  ),
+                                    const SizedBox(width: 8),
+                                    Text(
+                                      LocalizationService.get(lang, 'ingredients_selected', args: {'count': (_selectedIngredients.length + _customIngredients.length).toString()}),
+                                      style: TextStyle(
+                                        color: Colors.green.shade700,
+                                        fontWeight: FontWeight.w600,
+                                        fontSize: 13,
+                                      ),
+                                    ),
+                                    const Spacer(),
+                                    TextButton(
+                                      onPressed: () => setState(() {
+                                        _selectedIngredients.clear();
+                                        _customIngredients.clear();
+                                      }),
+                                      child: Text(
+                                        LocalizationService.get(lang, 'clear_all'),
+                                        style: const TextStyle(
+                                          fontSize: 11,
+                                          color: Colors.red,
+                                        ),
+                                      ),
+                                    ),
+                                  ],
                                 ),
-                              ],
-                            ),
-                          )
-                        : const SizedBox(key: ValueKey('empty_count')),
+                              )
+                            : const SizedBox(
+                                key: ValueKey('empty_count')),
                   ),
                   const SizedBox(height: 12),
 
@@ -533,8 +579,14 @@ class _RecipeScreenState extends State<RecipeScreen>
                                   ],
                                 )
                               : LinearGradient(
-                                  begin: Alignment(-2.0 + 4.0 * _pulseController.value, -1.0),
-                                  end: Alignment(-1.0 + 4.0 * _pulseController.value, 1.0),
+                                  begin: Alignment(
+                                      -2.0 +
+                                          4.0 * _pulseController.value,
+                                      -1.0),
+                                  end: Alignment(
+                                      -1.0 +
+                                          4.0 * _pulseController.value,
+                                      1.0),
                                   colors: const [
                                     Color(0xFF1B5E20),
                                     Color(0xFF4CAF50),
@@ -544,7 +596,8 @@ class _RecipeScreenState extends State<RecipeScreen>
                                 ),
                           boxShadow: [
                             BoxShadow(
-                              color: Colors.green.withValues(alpha: 0.3),
+                              color:
+                                  Colors.green.withValues(alpha: 0.3),
                               blurRadius: 8,
                               offset: const Offset(0, 4),
                             ),
@@ -554,40 +607,78 @@ class _RecipeScreenState extends State<RecipeScreen>
                       );
                     },
                     child: ElevatedButton(
-                        onPressed: _isLoading ? null : _fetchAiRecipe,
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: Colors.transparent,
-                          shadowColor: Colors.transparent,
-                          disabledForegroundColor: Colors.white70,
-                          padding: const EdgeInsets.symmetric(vertical: 16),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(16),
+                      onPressed: _isLoading ? null : () => _fetchAiRecipe(lang),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.transparent,
+                        shadowColor: Colors.transparent,
+                        disabledForegroundColor: Colors.white70,
+                        padding:
+                            const EdgeInsets.symmetric(vertical: 16),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(16),
+                        ),
+                      ),
+                      child: _isLoading
+                          ? _buildLoadingState(lang)
+                          : Row(
+                              mainAxisAlignment:
+                                  MainAxisAlignment.center,
+                              children: [
+                                const Icon(
+                                  LucideIcons.sparkles,
+                                  color: Colors.amber,
+                                  size: 18,
+                                ),
+                                const SizedBox(width: 8),
+                                Text(
+                                  LocalizationService.get(lang, 'search_recipe_btn'),
+                                  style: const TextStyle(
+                                    fontWeight: FontWeight.bold,
+                                    color: Colors.white,
+                                    fontSize: 16,
+                                  ),
+                                ),
+                              ],
+                            ),
+                    ),
+                  ),
+                  const SizedBox(height: 20),
+
+                  // ─── Saved Recipes Section ───
+                  if (_savedRecipes.isNotEmpty) ...[
+                    Row(
+                      children: [
+                        const Text(
+                          '📌',
+                          style: TextStyle(fontSize: 16),
+                        ),
+                        const SizedBox(width: 6),
+                        Expanded(
+                          child: Text(
+                            LocalizationService.get(lang, 'saved_recipes_title'),
+                            style: const TextStyle(
+                              fontWeight: FontWeight.bold,
+                              fontSize: 15,
+                            ),
                           ),
                         ),
-                        child: _isLoading
-                            ? _buildLoadingState()
-                            : Row(
-                                mainAxisAlignment: MainAxisAlignment.center,
-                                children: const [
-                                  Icon(
-                                    LucideIcons.sparkles,
-                                    color: Colors.amber,
-                                    size: 18,
-                                  ),
-                                  SizedBox(width: 8),
-                                  Text(
-                                    'Cari Resep AI ✦',
-                                    style: TextStyle(
-                                      fontWeight: FontWeight.bold,
-                                      color: Colors.white,
-                                      fontSize: 16,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                      ),
+                        Text(
+                          LocalizationService.get(lang, 'recipes_count', args: {'count': _savedRecipes.length.toString()}),
+                          style: TextStyle(
+                            color: Colors.grey.shade500,
+                            fontSize: 12,
+                          ),
+                        ),
+                      ],
                     ),
-                  const SizedBox(height: 24),
+                    const SizedBox(height: 10),
+                    ..._savedRecipes.asMap().entries.map((entry) {
+                      final idx = entry.key;
+                      final recipe = entry.value;
+                      return _buildSavedRecipeCard(idx, recipe, lang);
+                    }),
+                    const SizedBox(height: 8),
+                  ],
                 ],
               ),
             ),
@@ -597,7 +688,59 @@ class _RecipeScreenState extends State<RecipeScreen>
     );
   }
 
-  Widget _buildLoadingState() {
+  Widget _buildSavedRecipeCard(int index, Map<String, String> recipe, String lang) {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 8),
+      decoration: BoxDecoration(
+        color: Colors.green.shade50,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: Colors.green.shade200),
+      ),
+      child: ListTile(
+        contentPadding:
+            const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
+        leading: Container(
+          width: 36,
+          height: 36,
+          decoration: BoxDecoration(
+            color: Colors.green.shade100,
+            borderRadius: BorderRadius.circular(10),
+          ),
+          child: const Center(
+            child:
+                Text('📖', style: TextStyle(fontSize: 18)),
+          ),
+        ),
+        title: Text(
+          recipe['title'] ?? 'Recipe ${index + 1}',
+          style: const TextStyle(
+              fontWeight: FontWeight.w600, fontSize: 13),
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+        ),
+        subtitle: Text(
+          LocalizationService.get(lang, 'tap_to_view'),
+          style: TextStyle(color: Colors.grey.shade500, fontSize: 11),
+        ),
+        trailing: IconButton(
+          icon: Icon(LucideIcons.trash2,
+              size: 16, color: Colors.red.shade300),
+          onPressed: () {
+            setState(() => _savedRecipes.removeAt(index));
+          },
+        ),
+        onTap: () {
+          setState(() {
+            _generatedRecipe = recipe['content'] ?? '';
+            _justSaved = true;
+          });
+          _showRecipeDetailsDrawer(lang);
+        },
+      ),
+    );
+  }
+
+  Widget _buildLoadingState(String lang) {
     return Row(
       mainAxisAlignment: MainAxisAlignment.center,
       children: [
@@ -610,9 +753,9 @@ class _RecipeScreenState extends State<RecipeScreen>
           ),
         ),
         const SizedBox(width: 8),
-        const Text(
-          'AI sedang menganalisis bahan...',
-          style: TextStyle(
+        Text(
+          LocalizationService.get(lang, 'ai_analyzing'),
+          style: const TextStyle(
             color: Colors.white,
             fontWeight: FontWeight.bold,
             fontSize: 14,
@@ -622,243 +765,417 @@ class _RecipeScreenState extends State<RecipeScreen>
     );
   }
 
-  void _showRecipeDetailsDrawer() {
+  /// Build a rich emoji-enhanced recipe display widget
+  Widget _buildRichRecipeContent(String recipe) {
+    final lines = recipe.split('\n');
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: lines.map((line) {
+        final trimmed = line.trim();
+        if (trimmed.isEmpty) return const SizedBox(height: 6);
+
+        final isBold = trimmed.startsWith('**') && trimmed.endsWith('**');
+        final isSectionHeader = isBold ||
+            trimmed.startsWith('🍳') ||
+            trimmed.startsWith('🍽️') ||
+            trimmed.startsWith('⏱') ||
+            trimmed.startsWith('🥗') ||
+            trimmed.startsWith('👨‍🍳') ||
+            trimmed.startsWith('💡') ||
+            trimmed.startsWith('🌱') ||
+            trimmed.startsWith('⚠️');
+
+        final displayText = trimmed
+            .replaceAll('**', '')
+            .replaceAll('*', '');
+
+        if (isSectionHeader) {
+          return Padding(
+            padding: const EdgeInsets.only(top: 12, bottom: 4),
+            child: Container(
+              padding:
+                  const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+              decoration: BoxDecoration(
+                color: Colors.green.withValues(alpha: 0.08),
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(
+                    color: Colors.green.withValues(alpha: 0.15)),
+              ),
+              child: Text(
+                displayText,
+                style: const TextStyle(
+                  fontWeight: FontWeight.bold,
+                  fontSize: 14,
+                  height: 1.4,
+                ),
+              ),
+            ),
+          );
+        }
+
+        final isStep = RegExp(r'^[\d️⃣1-9]').hasMatch(trimmed);
+        if (isStep) {
+          return Padding(
+            padding: const EdgeInsets.only(top: 4, bottom: 2, left: 4),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const SizedBox(width: 4),
+                Expanded(
+                  child: Text(
+                    displayText,
+                    style: const TextStyle(fontSize: 13, height: 1.5),
+                  ),
+                ),
+              ],
+            ),
+          );
+        }
+
+        if (trimmed.startsWith('-') ||
+            trimmed.startsWith('•') ||
+            trimmed.startsWith('·')) {
+          return Padding(
+            padding:
+                const EdgeInsets.only(top: 2, left: 8),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  '• ',
+                  style: TextStyle(
+                      color: Colors.green.shade700,
+                      fontWeight: FontWeight.bold,
+                      fontSize: 14),
+                ),
+                Expanded(
+                  child: Text(
+                    displayText.replaceFirst(RegExp(r'^[-•·]\s*'), ''),
+                    style: const TextStyle(fontSize: 13, height: 1.5),
+                  ),
+                ),
+              ],
+            ),
+          );
+        }
+
+        return Padding(
+          padding: const EdgeInsets.symmetric(vertical: 2),
+          child: Text(
+            displayText,
+            style: const TextStyle(
+              fontSize: 13,
+              height: 1.6,
+              fontStyle: FontStyle.italic,
+            ),
+          ),
+        );
+      }).toList(),
+    );
+  }
+
+  void _showRecipeDetailsDrawer(String lang) {
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
-      builder: (ctx) => Container(
-        height: MediaQuery.of(ctx).size.height * 0.85,
-        decoration: BoxDecoration(
-          color: Theme.of(ctx).scaffoldBackgroundColor,
-          borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            // Handle bar
-            Center(
-              child: Container(
-                margin: const EdgeInsets.only(top: 12),
-                width: 36,
-                height: 4,
-                decoration: BoxDecoration(
-                  color: Colors.grey.shade300,
-                  borderRadius: BorderRadius.circular(2),
-                ),
-              ),
-            ),
-            Padding(
-              padding: const EdgeInsets.fromLTRB(20, 16, 20, 0),
-              child: Row(
-                children: [
-                  Container(
-                    padding: const EdgeInsets.all(8),
-                    decoration: BoxDecoration(
-                      color: Colors.green.shade50,
-                      borderRadius: BorderRadius.circular(10),
-                    ),
-                    child: const Icon(
-                      LucideIcons.chefHat,
-                      color: Colors.green,
-                      size: 20,
-                    ),
-                  ),
-                  const SizedBox(width: 10),
-                  const Expanded(
-                    child: Text(
-                      'Rekomendasi Resep AI',
-                      style: TextStyle(
-                        fontWeight: FontWeight.bold,
-                        fontSize: 18,
-                      ),
-                    ),
-                  ),
-                  // Copy button
-                  IconButton(
-                    icon: const Icon(LucideIcons.copy, size: 18),
-                    onPressed: () {
-                      Clipboard.setData(ClipboardData(text: _generatedRecipe));
-                      ScaffoldMessenger.of(ctx).showSnackBar(
-                        SnackBar(
-                          content: const Text('📋 Resep disalin!'),
-                          behavior: SnackBarBehavior.floating,
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(12),
-                          ),
-                          duration: const Duration(seconds: 2),
-                        ),
-                      );
-                    },
-                    tooltip: 'Salin resep',
-                  ),
-                  // Share button
-                  IconButton(
-                    icon: const Icon(LucideIcons.share2, size: 18),
-                    onPressed: () {
-                      // Share functionality
-                      Clipboard.setData(ClipboardData(text: _generatedRecipe));
-                      ScaffoldMessenger.of(ctx).showSnackBar(
-                        SnackBar(
-                          content: const Text(
-                            '📤 Resep siap dibagikan! (disalin ke clipboard)',
-                          ),
-                          behavior: SnackBarBehavior.floating,
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(12),
-                          ),
-                        ),
-                      );
-                    },
-                    tooltip: 'Bagikan resep',
-                  ),
-                ],
-              ),
-            ),
-            const Divider(height: 20),
-
-            // Recipe content
-            Expanded(
-              child: SingleChildScrollView(
-                padding: const EdgeInsets.symmetric(horizontal: 20),
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setSheetState) => Container(
+          height: MediaQuery.of(ctx).size.height * 0.88,
+          decoration: BoxDecoration(
+            color: Theme.of(ctx).scaffoldBackgroundColor,
+            borderRadius:
+                const BorderRadius.vertical(top: Radius.circular(24)),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              // Handle bar
+              Center(
                 child: Container(
-                  padding: const EdgeInsets.all(16),
+                  margin: const EdgeInsets.only(top: 12),
+                  width: 36,
+                  height: 4,
                   decoration: BoxDecoration(
-                    color: Colors.green.withValues(alpha: 0.03),
-                    borderRadius: BorderRadius.circular(16),
-                    border: Border.all(
-                      color: Colors.green.withValues(alpha: 0.08),
-                    ),
-                  ),
-                  child: SelectableText(
-                    _generatedRecipe,
-                    style: const TextStyle(fontSize: 14, height: 1.6),
+                    color: Colors.grey.shade300,
+                    borderRadius: BorderRadius.circular(2),
                   ),
                 ),
               ),
-            ),
-            const SizedBox(height: 16),
-
-            // Action buttons
-            Padding(
-              padding: const EdgeInsets.fromLTRB(20, 0, 20, 16),
-              child: Row(
-                children: [
-                  Expanded(
-                    child: OutlinedButton(
-                      onPressed: () => Navigator.pop(ctx),
-                      style: OutlinedButton.styleFrom(
-                        padding: const EdgeInsets.symmetric(vertical: 14),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(14),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(20, 16, 20, 0),
+                child: Row(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(8),
+                      decoration: BoxDecoration(
+                        color: Colors.green.shade50,
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      child: const Icon(
+                        LucideIcons.chefHat,
+                        color: Colors.green,
+                        size: 20,
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Text(
+                        LocalizationService.get(lang, 'ai_recommendation'),
+                        style: const TextStyle(
+                          fontWeight: FontWeight.bold,
+                          fontSize: 18,
                         ),
                       ),
-                      child: const Text('Tutup'),
                     ),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    flex: 2,
-                    child: ElevatedButton.icon(
-                      onPressed: () async {
-                        final messenger = ScaffoldMessenger.of(context);
-                        Navigator.pop(ctx);
-                        HapticFeedback.vibrate();
-
-                        // Actually consume selected food items from DB
-                        final allItems = HiveDbHelper.getFoodItems();
-                        int consumedCount = 0;
-                        int savedMoney = 0;
-
-                        for (final selectedName in _selectedIngredients) {
-                          // Find item in DB
-                          final matchIndex = allItems.indexWhere(
-                            (item) => item.name == selectedName,
-                          );
-                          if (matchIndex != -1) {
-                            final item = allItems[matchIndex];
-
-                            // Save to history
-                            final event = HistoryEvent(
-                              id: '${DateTime.now().millisecondsSinceEpoch}_$consumedCount',
-                              name: item.name,
-                              emoji: item.emoji,
-                              weight: item.weight,
-                              price: item.price,
-                              action: 'consumed',
-                              timestamp: DateTime.now().millisecondsSinceEpoch,
-                            );
-                            await HiveDbHelper.saveHistoryEvent(event);
-
-                            // Delete from tracker
-                            await HiveDbHelper.deleteFoodItem(item.id);
-                            await NotificationService().cancelNotification(
-                              int.parse(item.id) % 100000,
-                            );
-
-                            savedMoney += item.price;
-                            consumedCount++;
-                          }
-                        }
-
-                        // Clear selected lists
-                        setState(() {
-                          _selectedIngredients.clear();
-                          _customIngredients.clear();
-                        });
-
-                        messenger.showSnackBar(
+                    // Copy button
+                    IconButton(
+                      icon: const Icon(LucideIcons.copy, size: 18),
+                      onPressed: () {
+                        Clipboard.setData(
+                            ClipboardData(text: _generatedRecipe));
+                        ScaffoldMessenger.of(ctx).showSnackBar(
                           SnackBar(
-                            content: Row(
-                              children: [
-                                const Text(
-                                  '🎉',
-                                  style: TextStyle(fontSize: 18),
-                                ),
-                                const SizedBox(width: 8),
-                                Expanded(
-                                  child: Text(
-                                    consumedCount > 0
-                                        ? 'Masakan selesai! $consumedCount bahan dikonsumsi & diselamatkan (Rp $savedMoney)!'
-                                        : 'Masakan selesai! Bahan tambahan dikonsumsi. 🌿',
-                                  ),
-                                ),
-                              ],
-                            ),
-                            backgroundColor: Colors.green,
+                            content: Text(LocalizationService.get(lang, 'recipe_copied')),
                             behavior: SnackBarBehavior.floating,
                             shape: RoundedRectangleBorder(
                               borderRadius: BorderRadius.circular(12),
                             ),
-                            duration: const Duration(seconds: 4),
+                            duration: const Duration(seconds: 2),
                           ),
                         );
                       },
-                      icon: const Icon(
-                        LucideIcons.chefHat,
-                        color: Colors.white,
-                        size: 18,
+                      tooltip: 'Copy recipe',
+                    ),
+                    // Share button
+                    IconButton(
+                      icon: const Icon(LucideIcons.share2, size: 18),
+                      onPressed: () {
+                        Clipboard.setData(
+                            ClipboardData(text: _generatedRecipe));
+                        ScaffoldMessenger.of(ctx).showSnackBar(
+                          SnackBar(
+                            content: Text(LocalizationService.get(lang, 'recipe_copied')),
+                            behavior: SnackBarBehavior.floating,
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                          ),
+                        );
+                      },
+                      tooltip: 'Share recipe',
+                    ),
+                  ],
+                ),
+              ),
+              const Divider(height: 20),
+
+              // Recipe content
+              Expanded(
+                child: SingleChildScrollView(
+                  padding: const EdgeInsets.symmetric(horizontal: 20),
+                  child: Container(
+                    padding: const EdgeInsets.all(16),
+                    decoration: BoxDecoration(
+                      color:
+                          Colors.green.withValues(alpha: 0.03),
+                      borderRadius: BorderRadius.circular(16),
+                      border: Border.all(
+                        color: Colors.green.withValues(alpha: 0.08),
                       ),
-                      label: const Text(
-                        'Selesai Memasak! 🍳',
-                        style: TextStyle(
-                          color: Colors.white,
-                          fontWeight: FontWeight.bold,
+                    ),
+                    child: _buildRichRecipeContent(_generatedRecipe),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 12),
+
+              // Save Recipe Button
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 20),
+                child: Column(
+                  children: [
+                    SizedBox(
+                      width: double.infinity,
+                      child: OutlinedButton.icon(
+                        onPressed: _justSaved
+                            ? null
+                            : () {
+                                _saveCurrentRecipe();
+                                setSheetState(() {});
+                              },
+                        icon: Icon(
+                          _justSaved
+                              ? LucideIcons.checkCircle
+                              : LucideIcons.bookmark,
+                          size: 17,
+                          color: _justSaved
+                              ? Colors.green
+                              : Colors.green.shade700,
                         ),
-                      ),
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: Colors.green,
-                        padding: const EdgeInsets.symmetric(vertical: 14),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(14),
+                        label: Text(
+                          _justSaved
+                              ? LocalizationService.get(lang, 'just_saved')
+                              : LocalizationService.get(lang, 'save_recipe'),
+                          style: TextStyle(
+                            color: _justSaved
+                                ? Colors.green
+                                : Colors.green.shade700,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                        style: OutlinedButton.styleFrom(
+                          padding:
+                              const EdgeInsets.symmetric(vertical: 11),
+                          side: BorderSide(
+                            color: _justSaved
+                                ? Colors.green
+                                : Colors.green.shade300,
+                          ),
+                          shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(12)),
                         ),
                       ),
                     ),
-                  ),
-                ],
+                    if (_justSaved)
+                      Padding(
+                        padding: const EdgeInsets.only(top: 4),
+                        child: Text(
+                          '📌 "${_extractTitle(_generatedRecipe)}"',
+                          textAlign: TextAlign.center,
+                          style: TextStyle(
+                            fontSize: 11,
+                            color: Colors.green.shade600,
+                            fontStyle: FontStyle.italic,
+                          ),
+                        ),
+                      ),
+                  ],
+                ),
               ),
-            ),
-          ],
+              const SizedBox(height: 10),
+
+              // Action buttons
+              Padding(
+                padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: OutlinedButton(
+                        onPressed: () => Navigator.pop(ctx),
+                        style: OutlinedButton.styleFrom(
+                          padding:
+                              const EdgeInsets.symmetric(vertical: 14),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(14),
+                          ),
+                        ),
+                        child: Text(LocalizationService.get(lang, 'cancel')),
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      flex: 2,
+                      child: ElevatedButton.icon(
+                        onPressed: () async {
+                          final messenger =
+                              ScaffoldMessenger.of(context);
+                          Navigator.pop(ctx);
+                          HapticFeedback.vibrate();
+
+                          final allItems = HiveDbHelper.getFoodItems();
+                          int consumedCount = 0;
+                          int savedMoney = 0;
+
+                          for (final selectedName
+                              in _selectedIngredients) {
+                            final matchIndex = allItems.indexWhere(
+                              (item) => item.name == selectedName,
+                            );
+                            if (matchIndex != -1) {
+                              final item = allItems[matchIndex];
+                              final event = HistoryEvent(
+                                id: '${DateTime.now().millisecondsSinceEpoch}_$consumedCount',
+                                name: item.name,
+                                emoji: item.emoji,
+                                weight: item.weight,
+                                price: item.price,
+                                action: 'consumed',
+                                timestamp: DateTime.now()
+                                    .millisecondsSinceEpoch,
+                              );
+                              await HiveDbHelper.saveHistoryEvent(event);
+                              await HiveDbHelper.deleteFoodItem(item.id);
+                              await NotificationService()
+                                  .cancelNotification(
+                                int.parse(item.id) % 100000,
+                              );
+                              savedMoney += item.price;
+                              consumedCount++;
+                            }
+                          }
+
+                          setState(() {
+                            _selectedIngredients.clear();
+                            _customIngredients.clear();
+                          });
+
+                          messenger.showSnackBar(
+                            SnackBar(
+                              content: Row(
+                                children: [
+                                  const Text(
+                                    '🎉',
+                                    style: TextStyle(fontSize: 18),
+                                  ),
+                                  const SizedBox(width: 8),
+                                  Expanded(
+                                    child: Text(
+                                      consumedCount > 0
+                                          ? LocalizationService.get(lang, 'cooking_done_snack', args: {
+                                              'count': consumedCount.toString(),
+                                              'money': savedMoney.toString()
+                                            })
+                                          : LocalizationService.get(lang, 'cooking_done_custom_snack'),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              backgroundColor: Colors.green,
+                              behavior: SnackBarBehavior.floating,
+                              shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(12)),
+                              duration: const Duration(seconds: 4),
+                            ),
+                          );
+                        },
+                        icon: const Icon(
+                          LucideIcons.chefHat,
+                          color: Colors.white,
+                          size: 18,
+                        ),
+                        label: Text(
+                          LocalizationService.get(lang, 'finish_cooking'),
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.green,
+                          padding:
+                              const EdgeInsets.symmetric(vertical: 14),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(14),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );
